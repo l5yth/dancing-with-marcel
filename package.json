@@ -1,0 +1,27 @@
+{
+  "name": "dancing-with-marcel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An ASCII-punk dancer that listens to the microphone.",
+  "license": "Apache-2.0",
+  "author": "Afri Blanck (@l5yth)",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "check": "npm run lint && npm run test:coverage && npm run docs:check",
+    "lint": "biome ci .",
+    "test": "node --test test/",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-functions=100 --test-coverage-include=\"src/**\" --test-coverage-include=\"scripts/**\" test/",
+    "docs": "jsdoc -c jsdoc.json",
+    "docs:check": "node scripts/docs-check.mjs",
+    "check:pages": "node scripts/check-pages.mjs"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@types/node": "24.13.6",
+    "jsdoc": "4.0.5",
+    "typescript": "7.0.2"
+  }
+}

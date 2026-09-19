@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Afri Blanck (@l5yth)
+# SPDX-License-Identifier: Apache-2.0
+
+node_modules/
+docs-out/
+coverage/
+.claude/
+
+# Audio never enters the repository (SPEC invariant 6).
+*.mp3
+*.wav
+*.flac
+*.ogg
+*.oga
+*.opus
+*.m4a
+*.aac
+*.aif
+*.aiff
+*.wma
+*.webm
+*.mp4

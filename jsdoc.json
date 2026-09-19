@@ -1,0 +1,12 @@
+{
+  "source": {
+    "include": ["src", "scripts"],
+    "includePattern": ".+\\.m?js$",
+    "excludePattern": "(^|/)node_modules/"
+  },
+  "sourceType": "module",
+  "opts": {
+    "recurse": true,
+    "destination": "docs-out"
+  }
+}
