@@ -5,6 +5,8 @@ SPDX-License-Identifier: Apache-2.0
 
 # dancing with marcel
 
+Audio-input guided dancing ASCII punk for Veit's birthday.
+
 ## Run
 
 1. `python3 -m http.server 8080`
