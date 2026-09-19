@@ -12,8 +12,8 @@
   "scripts": {
     "check": "npm run lint && npm run test:coverage && npm run docs:check",
     "lint": "biome ci .",
-    "test": "node --test test/",
-    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-functions=100 --test-coverage-include=\"src/**\" --test-coverage-include=\"scripts/**\" test/",
+    "test": "node --test \"test/**/*.test.js\"",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-functions=100 --test-coverage-include=\"src/**\" --test-coverage-include=\"scripts/**\" \"test/**/*.test.js\"",
     "docs": "jsdoc -c jsdoc.json",
     "docs:check": "node scripts/docs-check.mjs",
     "check:pages": "node scripts/check-pages.mjs"
