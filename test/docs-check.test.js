@@ -26,6 +26,7 @@ import {
   findUndocumentedDeclarations,
   readTypeFiles,
   runDocsCheck,
+  TYPE_DIRS,
 } from '../scripts/lib/docs-check.mjs';
 
 const REPO = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -97,6 +98,15 @@ describe('docs check', () => {
         undocumented: true,
         meta: at('x.js', 23),
       },
+      // An element write such as `this.ring[index] = x` is not a declaration.
+      {
+        kind: 'member',
+        longname: 'K#ring[undefined]',
+        memberof: 'K',
+        scope: 'instance',
+        undocumented: true,
+        meta: at('x.js', 24),
+      },
       // An undocumented class and its constructor, without location.
       { kind: 'class', longname: 'E', scope: 'global', undocumented: true },
       { kind: 'class', longname: 'E#E', scope: 'instance', undocumented: true },
@@ -142,22 +152,23 @@ describe('docs check', () => {
     ]);
   });
 
-  it('B3: readTypeFiles reads only the .d.ts files of a directory', async () => {
+  it('B3: readTypeFiles reads only the .d.ts files of the directories it is given', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'marcel-types-'));
     made.push(dir);
     await writeFile(join(dir, 'a.d.ts'), 'type A = 1;');
     await writeFile(join(dir, 'b.txt'), 'ignored');
     await writeFile(join(dir, 'c.d.ts'), 'type C = 1;');
-    const files = readTypeFiles(dir).sort((left, right) => left.file.localeCompare(right.file));
+    const files = readTypeFiles([dir]).sort((left, right) => left.file.localeCompare(right.file));
     assert.deepEqual(files, [
       { file: join(dir, 'a.d.ts'), source: 'type A = 1;' },
       { file: join(dir, 'c.d.ts'), source: 'type C = 1;' },
     ]);
   });
 
-  it('B3: the real declaration files are all documented', () => {
-    const files = readTypeFiles(join(REPO, 'src/types'));
-    assert.ok(files.length >= 2);
+  it('B3: the real declaration files of every type directory are documented', () => {
+    assert.deepEqual(TYPE_DIRS, ['src/types', 'scripts/types']);
+    const files = readTypeFiles(TYPE_DIRS.map((dir) => join(REPO, dir)));
+    assert.ok(files.length >= 3);
     assert.deepEqual(files.flatMap(findUndocumentedDeclarations), []);
   });
 

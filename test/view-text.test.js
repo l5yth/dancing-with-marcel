@@ -17,14 +17,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { DEFAULTS } from '../src/config.js';
-import { debugLabel, overlayText, statusText } from '../src/view/text.js';
+import { overlayText, statusText } from '../src/view/text.js';
 
 describe('view text', () => {
-  it('unit: the debug word is the state', () => {
-    assert.equal(debugLabel('break'), 'break');
-    assert.equal(debugLabel('music'), 'music');
-  });
-
   it('unit: every capture status has a message', () => {
     assert.equal(statusText('idle'), 'click start');
     assert.equal(statusText('starting'), 'starting');

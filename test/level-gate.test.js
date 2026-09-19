@@ -18,7 +18,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { LevelGate } from '../src/classify/level-gate.js';
 
-const CONFIG = { musicDb: -40, breakDb: -50, musicEnterMs: 1000, breakHoldMs: 2000, smoothMs: 250 };
+const CONFIG = {
+  musicDb: -40,
+  breakDb: -50,
+  musicEnterMs: 1000,
+  breakHoldMs: 2000,
+  levelWindowMs: 400,
+};
 const FRAME_MS = 10;
 
 /**
@@ -71,15 +77,17 @@ describe('LevelGate', () => {
     const gate = new LevelGate(CONFIG);
     assert.equal(feed(gate, -20, 500), 'break');
     feed(gate, -80, 2000);
+    // The burst plus the window it lingers in still has to stay under musicEnterMs.
     assert.equal(feed(gate, -20, 500), 'break');
   });
 
-  it('unit: leaves music only after breakHoldMs of quiet', () => {
+  it('unit: leaves music after breakHoldMs of quiet, plus the width of the level window', () => {
     const gate = new LevelGate(CONFIG);
     feed(gate, -20, 3000);
     assert.equal(gate.state, 'music');
     const ms = msUntilSwitch(gate, -80);
-    assert.ok(ms >= 2000 && ms <= 2400, `left music after ${ms} ms`);
+    const budget = CONFIG.breakHoldMs + CONFIG.levelWindowMs;
+    assert.ok(ms >= CONFIG.breakHoldMs && ms <= budget + 100, `left music after ${ms} ms`);
     assert.equal(gate.state, 'break');
   });
 
@@ -99,18 +107,41 @@ describe('LevelGate', () => {
     assert.equal(feed(inMusic, -45, 10000), 'music');
   });
 
-  it('unit: the first reading seeds the smoothing instead of ramping from silence', () => {
+  it('unit: the first reading is the level, with no ramp from silence', () => {
     const gate = new LevelGate(CONFIG);
-    assert.equal(gate.smoothedDb, null);
+    assert.equal(gate.levelDb, null);
     gate.update(-30, FRAME_MS);
-    assert.equal(gate.smoothedDb, -30);
+    assert.ok(Math.abs(gate.levelDb - -30) < 1e-9, `${gate.levelDb}`);
   });
 
-  it('unit: smoothing converges on a steady level', () => {
+  it('unit: the gaps between drum hits do not drag the level down to silence', () => {
+    // Four loud hops, then 32 silent ones: a beat at about 150 bpm.
     const gate = new LevelGate(CONFIG);
-    gate.update(-80, FRAME_MS);
-    feed(gate, -20, 5000);
-    assert.ok(Math.abs(gate.smoothedDb - -20) < 0.01);
+    for (let beat = 0; beat < 40; beat += 1) {
+      for (let hop = 0; hop < 36; hop += 1) {
+        gate.update(hop < 4 ? -14 : -120, FRAME_MS);
+      }
+    }
+    assert.ok(Math.abs(gate.levelDb - -14) < 1e-9, `${gate.levelDb}`);
+    assert.equal(gate.state, 'music');
+  });
+
+  it('unit: the level is the loudest hop of the window and expires with it', () => {
+    const gate = new LevelGate(CONFIG);
+    gate.update(-14, FRAME_MS);
+    feed(gate, -60, CONFIG.levelWindowMs - 2 * FRAME_MS);
+    assert.ok(Math.abs(gate.levelDb - -14) < 1e-9, `still the peak: ${gate.levelDb}`);
+    feed(gate, -60, 3 * FRAME_MS);
+    assert.ok(Math.abs(gate.levelDb - -60) < 1e-9, `peak expired: ${gate.levelDb}`);
+    assert.equal(gate.recent.length, Math.round(CONFIG.levelWindowMs / FRAME_MS));
+  });
+
+  it('unit: a frame longer than the window still leaves one hop in it', () => {
+    const gate = new LevelGate(CONFIG);
+    gate.update(-30, 5000);
+    assert.equal(gate.recent.length, 1);
+    gate.update(-70, 5000);
+    assert.ok(Math.abs(gate.levelDb - -70) < 1e-9, `${gate.levelDb}`);
   });
 
   it('unit: musicEnterMs of zero enters music on the first loud frame', () => {

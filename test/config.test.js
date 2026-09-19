@@ -17,7 +17,7 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { DEFAULTS, isDebug, parseConfig, RANGES } from '../src/config.js';
+import { configWith, DEFAULTS, isDebug, parseConfig, RANGES } from '../src/config.js';
 
 describe('config', () => {
   it('C11: the empty query returns the defaults', () => {
@@ -27,8 +27,34 @@ describe('config', () => {
       breakDb: -50,
       musicEnterMs: 1000,
       breakHoldMs: 2000,
-      smoothMs: 250,
+      levelWindowMs: 400,
+      bpmMin: 95,
+      bpmMax: 190,
+      tempoMinConfidence: 0.3,
+      defaultBpm: 140,
+      bpmSettleMs: 3000,
     });
+  });
+
+  it('C11: the tempo range spans exactly one octave by default, so no tempo has two readings', () => {
+    assert.equal(DEFAULTS.bpmMax, 2 * DEFAULTS.bpmMin);
+  });
+
+  it('C11: tempo tunables take valid overrides and refuse invalid ones', () => {
+    const tuned = parseConfig('?bpmMin=80&bpmMax=160&tempoMinConfidence=0.5');
+    assert.equal(tuned.bpmMin, 80);
+    assert.equal(tuned.bpmMax, 160);
+    assert.equal(tuned.tempoMinConfidence, 0.5);
+    assert.equal(parseConfig('?tempoMinConfidence=1.5').tempoMinConfidence, 0.3);
+    assert.equal(parseConfig('?tempoMinConfidence=-0.1').tempoMinConfidence, 0.3);
+  });
+
+  it('C11: a tempo range in the wrong order falls back to the defaults', () => {
+    for (const query of ['?bpmMin=150&bpmMax=100', '?bpmMin=120&bpmMax=120', '?bpmMin=200']) {
+      const config = parseConfig(query);
+      assert.equal(config.bpmMin, DEFAULTS.bpmMin, query);
+      assert.equal(config.bpmMax, DEFAULTS.bpmMax, query);
+    }
   });
 
   it('C11: a valid override wins, with or without the leading question mark', () => {
@@ -51,6 +77,17 @@ describe('config', () => {
 
   it('C11: unknown keys are ignored', () => {
     assert.deepEqual(parseConfig('?foo=1&bar=2'), DEFAULTS);
+    assert.deepEqual(configWith({ foo: 1 }), DEFAULTS);
+  });
+
+  it('C11: configWith is the one place the rules live, and the URL goes through it', () => {
+    assert.deepEqual(configWith({}), DEFAULTS);
+    assert.equal(configWith({ breakHoldMs: 4000 }).breakHoldMs, 4000);
+    assert.equal(configWith({ breakHoldMs: 99999 }).breakHoldMs, DEFAULTS.breakHoldMs);
+    assert.equal(configWith({ breakHoldMs: Number.NaN }).breakHoldMs, DEFAULTS.breakHoldMs);
+    assert.equal(configWith({ musicDb: -60, breakDb: -30 }).musicDb, DEFAULTS.musicDb);
+    assert.equal(configWith({ bpmMin: 150, bpmMax: 100 }).bpmMax, DEFAULTS.bpmMax);
+    assert.ok(Object.isFrozen(configWith({})));
   });
 
   it('C11: a repeated key uses its first occurrence', () => {

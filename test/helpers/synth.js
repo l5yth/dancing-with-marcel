@@ -1,0 +1,289 @@
+/*
+   Copyright (C) 2026 Afri Blanck (@l5yth)
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+*/
+
+/**
+ * @file Seeded synthetic audio fixtures, defined by the recipes in ACCEPTANCE
+ * Layer C. No audio file is ever committed (SPEC invariant 6); tests generate
+ * these in code. Every fixture takes an optional random source so the same seed
+ * always yields the same samples.
+ */
+
+/** Seed of every fixture (ACCEPTANCE Conventions). */
+export const SEED = 0xc0ffee;
+
+/**
+ * A small seeded random number generator.
+ *
+ * @param {number} seed Any 32-bit integer.
+ * @returns {() => number} Returns numbers in `[0, 1)`.
+ */
+export function mulberry32(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let mixed = state;
+    mixed = Math.imul(mixed ^ (mixed >>> 15), mixed | 1);
+    mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), mixed | 61);
+    return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Root-mean-square of a buffer.
+ *
+ * @param {Float32Array} buffer Samples.
+ * @returns {number} The RMS, 0 for an empty buffer.
+ */
+export function rms(buffer) {
+  let sum = 0;
+  for (const sample of buffer) {
+    sum += sample * sample;
+  }
+  return buffer.length === 0 ? 0 : Math.sqrt(sum / buffer.length);
+}
+
+/**
+ * Scale a buffer to a target RMS level. Silence stays silence.
+ *
+ * @param {Float32Array} buffer Samples.
+ * @param {number} db Target RMS in dBFS.
+ * @returns {Float32Array} A scaled copy.
+ */
+export function scaleToDb(buffer, db) {
+  const level = rms(buffer);
+  const gain = level === 0 ? 0 : 10 ** (db / 20) / level;
+  return buffer.map((sample) => sample * gain);
+}
+
+/**
+ * White noise in `[-1, 1)`.
+ *
+ * @param {number} length Number of samples.
+ * @param {() => number} rand Random source.
+ * @returns {Float32Array} The noise.
+ */
+function noise(length, rand) {
+  return Float32Array.from({ length }, () => rand() * 2 - 1);
+}
+
+/**
+ * One-pole low-pass filter.
+ *
+ * @param {Float32Array} input Samples.
+ * @param {number} cutoffHz Cutoff in Hz.
+ * @param {number} sampleRate Sample rate in Hz.
+ * @returns {Float32Array} The filtered copy.
+ */
+function lowpass(input, cutoffHz, sampleRate) {
+  const alpha = 1 - Math.exp((-2 * Math.PI * cutoffHz) / sampleRate);
+  const output = new Float32Array(input.length);
+  let state = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    state += alpha * (input[index] - state);
+    output[index] = state;
+  }
+  return output;
+}
+
+/**
+ * One-pole high-pass filter.
+ *
+ * @param {Float32Array} input Samples.
+ * @param {number} cutoffHz Cutoff in Hz.
+ * @param {number} sampleRate Sample rate in Hz.
+ * @returns {Float32Array} The filtered copy.
+ */
+function highpass(input, cutoffHz, sampleRate) {
+  const low = lowpass(input, cutoffHz, sampleRate);
+  return input.map((sample, index) => sample - low[index]);
+}
+
+/**
+ * A burst that decays exponentially.
+ *
+ * @param {number} seconds Burst length.
+ * @param {number} tau Decay time constant in seconds.
+ * @param {number} sampleRate Sample rate in Hz.
+ * @param {(index: number) => number} source Value before the decay envelope.
+ * @returns {Float32Array} The burst.
+ */
+function burst(seconds, tau, sampleRate, source) {
+  return Float32Array.from(
+    { length: Math.round(seconds * sampleRate) },
+    (_, index) => Math.exp(-index / (tau * sampleRate)) * source(index),
+  );
+}
+
+/**
+ * Exact zeros.
+ *
+ * @param {number} seconds Duration.
+ * @param {number} sampleRate Sample rate in Hz.
+ * @returns {Float32Array} Silence.
+ */
+export function silence(seconds, sampleRate) {
+  return new Float32Array(Math.round(seconds * sampleRate));
+}
+
+/**
+ * White noise at -60 dBFS RMS: the room before the music.
+ *
+ * @param {number} seconds Duration.
+ * @param {number} sampleRate Sample rate in Hz.
+ * @param {() => number} [rand] Random source.
+ * @returns {Float32Array} The room.
+ */
+export function room(seconds, sampleRate, rand = mulberry32(SEED)) {
+  return scaleToDb(noise(Math.round(seconds * sampleRate), rand), -60);
+}
+
+/**
+ * A drum loop at -20 dBFS RMS. Kick on beats 1 and 3, snare on beats 2 and 4,
+ * a hat on every eighth note.
+ *
+ * @param {number} bpm Beats per minute.
+ * @param {number} seconds Duration.
+ * @param {number} sampleRate Sample rate in Hz.
+ * @param {() => number} [rand] Random source.
+ * @returns {Float32Array} The loop.
+ */
+export function drums(bpm, seconds, sampleRate, rand = mulberry32(SEED)) {
+  const length = Math.round(seconds * sampleRate);
+  const mix = new Float32Array(length);
+  const beat = (60 / bpm) * sampleRate;
+  const add = (/** @type {number} */ start, /** @type {Float32Array} */ hit) => {
+    for (let index = 0; index < hit.length && start + index < length; index += 1) {
+      mix[start + index] += hit[index];
+    }
+  };
+  const kick = burst(0.08, 0.025, sampleRate, (index) =>
+    Math.sin((2 * Math.PI * 60 * index) / sampleRate),
+  );
+  for (let count = 0; Math.round(count * beat) < length; count += 1) {
+    const start = Math.round(count * beat);
+    if (count % 2 === 0) {
+      add(start, kick);
+    } else {
+      const grit = highpass(noise(Math.round(0.12 * sampleRate), rand), 200, sampleRate);
+      add(
+        start,
+        burst(0.12, 0.03, sampleRate, (index) => 0.8 * grit[index]),
+      );
+    }
+    for (const offset of [0, beat / 2]) {
+      const sizzle = highpass(noise(Math.round(0.01 * sampleRate), rand), 6000, sampleRate);
+      add(
+        Math.round(start + offset),
+        burst(0.01, 0.004, sampleRate, (index) => 0.4 * sizzle[index]),
+      );
+    }
+  }
+  return scaleToDb(mix, -20);
+}
+
+/**
+ * A drum loop over a clipped guitar bed, at -20 dBFS RMS in total: a harmonic
+ * stack on 82 Hz and 110 Hz, hard-clipped, at -24 dBFS before summing.
+ *
+ * @param {number} bpm Beats per minute.
+ * @param {number} seconds Duration.
+ * @param {number} sampleRate Sample rate in Hz.
+ * @param {() => number} [rand] Random source.
+ * @returns {Float32Array} The loop over the bed.
+ */
+export function dense(bpm, seconds, sampleRate, rand = mulberry32(SEED)) {
+  const length = Math.round(seconds * sampleRate);
+  const stack = Float32Array.from({ length }, (_, index) => {
+    let sum = 0;
+    for (const base of [82, 110]) {
+      for (let harmonic = 1; harmonic <= 8; harmonic += 1) {
+        sum += Math.sin((2 * Math.PI * base * harmonic * index) / sampleRate) / harmonic;
+      }
+    }
+    return sum;
+  });
+  const peak = stack.reduce((top, sample) => Math.max(top, Math.abs(sample)), 0);
+  const clipped = stack.map((sample) => Math.max(-0.5, Math.min(0.5, sample / peak)));
+  const bed = scaleToDb(clipped, -24);
+  const loop = drums(bpm, seconds, sampleRate, rand);
+  return scaleToDb(
+    loop.map((sample, index) => sample + bed[index]),
+    -20,
+  );
+}
+
+/**
+ * Applause-like noise at -20 dBFS RMS: white noise under seeded Poisson
+ * clicks, 25 per second on average, each decaying in 8 ms.
+ *
+ * @param {number} seconds Duration.
+ * @param {number} sampleRate Sample rate in Hz.
+ * @param {() => number} [rand] Random source.
+ * @returns {Float32Array} The applause.
+ */
+export function applause(seconds, sampleRate, rand = mulberry32(SEED)) {
+  const output = new Float32Array(Math.round(seconds * sampleRate));
+  const decay = Math.exp(-1 / (0.008 * sampleRate));
+  let envelope = 0;
+  for (let index = 0; index < output.length; index += 1) {
+    envelope = envelope * decay + (rand() < 25 / sampleRate ? 1 : 0);
+    output[index] = (rand() * 2 - 1) * envelope;
+  }
+  return scaleToDb(output, -20);
+}
+
+/**
+ * Speech-like noise at -25 dBFS RMS: noise limited to 200 Hz to 3 kHz under an
+ * irregular envelope of 120 to 260 ms bursts separated by 40 to 180 ms gaps.
+ *
+ * @param {number} seconds Duration.
+ * @param {number} sampleRate Sample rate in Hz.
+ * @param {() => number} [rand] Random source.
+ * @returns {Float32Array} The speech.
+ */
+export function speech(seconds, sampleRate, rand = mulberry32(SEED)) {
+  const length = Math.round(seconds * sampleRate);
+  const envelope = new Float32Array(length);
+  const ramp = Math.round(0.005 * sampleRate);
+  for (let position = 0; position < length; ) {
+    const bursts = Math.round((0.12 + rand() * 0.14) * sampleRate);
+    for (let index = 0; index < bursts && position + index < length; index += 1) {
+      envelope[position + index] = Math.min(1, index / ramp, (bursts - 1 - index) / ramp);
+    }
+    position += bursts + Math.round((0.04 + rand() * 0.14) * sampleRate);
+  }
+  const band = lowpass(highpass(noise(length, rand), 200, sampleRate), 3000, sampleRate);
+  return scaleToDb(
+    band.map((sample, index) => sample * envelope[index]),
+    -25,
+  );
+}
+
+/**
+ * Join buffers end to end.
+ *
+ * @param {...Float32Array} buffers Buffers to join.
+ * @returns {Float32Array} One buffer.
+ */
+export function concat(...buffers) {
+  const joined = new Float32Array(buffers.reduce((total, buffer) => total + buffer.length, 0));
+  let offset = 0;
+  for (const buffer of buffers) {
+    joined.set(buffer, offset);
+    offset += buffer.length;
+  }
+  return joined;
+}
