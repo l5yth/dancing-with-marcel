@@ -17,14 +17,21 @@ Audio-input guided dancing ASCII punk for Veit's birthday.
 
 Add parameters to the URL:
 
-- `?debug=1` shows the live values
-- `?musicDb=-38&breakDb=-48` sets the level thresholds in dBFS
+- `?debug=1` shows the live values and a link to the repository
+- `?musicOverFloorDb=12&breakUnderFloorDb=8` sets how far over the room music
+  must be to start, and to keep going
 - `?musicEnterMs=1000&breakHoldMs=2000` sets the switch delays
-- `?levelWindowMs=400` sets how far back the level looks for its loudest moment
+- `?maxFlatness=0.6` sets how noise-like the sound may be
+- `?minBass=0.15&minOnsets=4&minFlux=0.1` set what counts as a pulse
+- `?levelWindowMs=400&timbreWindowMs=1500` set how far back level and timbre
+  are read
+- `?floorRiseDbPerSec=3` sets how fast the room level is relearned
 - `?bpmMin=95&bpmMax=190` sets the tempo range
-- `?tempoMinConfidence=0.3` sets how sure a tempo must be to count
+- `?tempoMinConfidence=0.3` sets how sure a tempo must be to be shown
 - `?defaultBpm=140&bpmSettleMs=3000` sets the dance tempo before one is
   detected, and how long a new one must hold
+
+With `?debug=1` each value is shown next to the threshold it must clear.
 
 ## Check audio files
 

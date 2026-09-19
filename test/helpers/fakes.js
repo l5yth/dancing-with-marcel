@@ -154,7 +154,7 @@ export function createAudioStack() {
 export function createFakeDocument({ missing = [] } = {}) {
   /** @type {Record<string, any>} */
   const elements = {};
-  for (const id of ['start', 'label', 'overlay']) {
+  for (const id of ['start', 'label', 'overlay', 'repo']) {
     if (!missing.includes(id)) {
       elements[id] = {
         id,

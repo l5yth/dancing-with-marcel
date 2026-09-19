@@ -26,10 +26,22 @@
  * @type {Record<ConfigKey, {default: number, min: number, max: number}>}
  */
 const PARAMS = {
-  /** Level at or above which audio counts as music-like, in dBFS. */
-  musicDb: { default: -40, min: -100, max: 0 },
-  /** Level at or below which audio counts as break-like, in dBFS. */
-  breakDb: { default: -50, min: -100, max: 0 },
+  /** How far above the room floor audio must sit to count as music, in dB. */
+  musicOverFloorDb: { default: 12, min: 0, max: 60 },
+  /** How far above the room floor music must stay to keep dancing, in dB. */
+  breakUnderFloorDb: { default: 8, min: 0, max: 60 },
+  /** Flattest spectrum that still counts as music, from 0 for a tone to 1 for noise. */
+  maxFlatness: { default: 0.6, min: 0, max: 1 },
+  /** Least bass that counts as a pulse, as a share of the energy. */
+  minBass: { default: 0.15, min: 0, max: 1 },
+  /** Onset strength at which a moment counts as an onset rather than a steady sound. */
+  minFlux: { default: 0.1, min: 0, max: 10 },
+  /** How many onsets the timbre window needs before the audio counts as moving. */
+  minOnsets: { default: 4, min: 1, max: 200 },
+  /** How far back tonality and bass are read, in milliseconds. */
+  timbreWindowMs: { default: 1500, min: 100, max: 10000 },
+  /** How fast the room floor climbs back towards a louder room, in dB per second. */
+  floorRiseDbPerSec: { default: 3, min: 0, max: 60 },
   /** Sustained music-like time needed to enter `music`, in milliseconds. */
   musicEnterMs: { default: 1000, min: 0, max: 60000 },
   /** Sustained break-like time needed to leave `music`, in milliseconds. */
@@ -70,9 +82,11 @@ export const RANGES = Object.freeze(
  *
  * A value that is not a number or lies outside its range is ignored, and so is
  * an unknown key. A pair that contradicts itself falls back to both defaults:
- * `breakDb` at or above `musicDb` would make the state flap, and `bpmMin` at or
- * above `bpmMax` leaves the tempo estimator no range to search. Every way of
- * tuning goes through here, so the URL and the offline eval agree.
+ * `breakUnderFloorDb` at or above `musicOverFloorDb` would make the state flap,
+ * `levelWindowMs` beyond `timbreWindowMs` would read a level the timbre window
+ * cannot cover, and `bpmMin` at or above `bpmMax` leaves the tempo estimator no
+ * range to search. Every way of tuning goes through here, so the URL and the
+ * offline eval agree.
  *
  * @param {Record<string, number>} overrides Values to change, by tunable name.
  * @returns {Readonly<Config>} A frozen configuration.
@@ -86,9 +100,13 @@ export function configWith(overrides) {
       config[key] = value;
     }
   }
-  if (config.breakDb >= config.musicDb) {
-    config.breakDb = DEFAULTS.breakDb;
-    config.musicDb = DEFAULTS.musicDb;
+  if (config.breakUnderFloorDb >= config.musicOverFloorDb) {
+    config.breakUnderFloorDb = DEFAULTS.breakUnderFloorDb;
+    config.musicOverFloorDb = DEFAULTS.musicOverFloorDb;
+  }
+  if (config.levelWindowMs > config.timbreWindowMs) {
+    config.levelWindowMs = DEFAULTS.levelWindowMs;
+    config.timbreWindowMs = DEFAULTS.timbreWindowMs;
   }
   if (config.bpmMin >= config.bpmMax) {
     config.bpmMin = DEFAULTS.bpmMin;

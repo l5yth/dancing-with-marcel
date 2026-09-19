@@ -43,18 +43,22 @@ export function statusText(status, detail = '') {
 }
 
 /**
- * Text of the `?debug=1` overlay.
+ * Text of the `?debug=1` overlay: what the classifier saw and what it needs
+ * to see, so a threshold can be retuned in the room without guessing.
  *
- * @param {number} levelDb Peak level of the recent window in dBFS.
- * @param {State} state Classifier state.
- * @param {Config} config Active configuration.
- * @returns {string} Four lines: level, state, and the two switch rules.
+ * @param {PipelineEvent} event The latest decision.
+ * @param {Readonly<Config>} config Active configuration.
+ * @returns {string} One line per measurement.
  */
-export function overlayText(levelDb, state, config) {
+export function overlayText(event, config) {
+  const bpm = event.bpm === null ? 'none' : `${Math.round(event.bpm)}`;
   return [
-    `level ${levelDb.toFixed(1)} dB`,
-    `state ${state}`,
-    `music: at least ${config.musicDb} dB for ${config.musicEnterMs} ms`,
-    `break: at most ${config.breakDb} dB for ${config.breakHoldMs} ms`,
+    `state    ${event.state}`,
+    `level    ${event.levelDb.toFixed(1)} dB   floor ${event.floorDb.toFixed(1)} dB   need ${(event.floorDb + config.musicOverFloorDb).toFixed(1)} dB`,
+    `flatness ${event.flatness.toFixed(2)}   need at most ${config.maxFlatness}`,
+    `bass     ${event.bass.toFixed(2)}   need at least ${config.minBass}`,
+    `onsets   ${event.onsets} of them, loudest ${event.flux.toFixed(2)}   need ${config.minOnsets} over ${config.minFlux}`,
+    `tempo    ${bpm} bpm at ${event.confidence.toFixed(2)}   need ${config.tempoMinConfidence}`,
+    `dance    ${event.danceBpm.toFixed(1)} bpm${event.locked ? '' : ' (default)'}`,
   ].join('\n');
 }

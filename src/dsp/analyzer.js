@@ -22,8 +22,8 @@
  * API, no wall clock (SPEC invariant 4).
  */
 
-import { FluxExtractor } from './flux.js';
 import { rmsDb } from './level.js';
+import { SpectrumFeatures } from './spectrum.js';
 import { estimateTempo } from './tempo.js';
 
 /** Samples between two analysis frames. */
@@ -65,10 +65,10 @@ export class Analyzer {
      */
     this.envelopeRate = sampleRate / HOP;
     /**
-     * Onset strength of each frame.
-     * @type {FluxExtractor}
+     * Spectral features of each frame.
+     * @type {SpectrumFeatures}
      */
-    this.flux = new FluxExtractor({ windowSize: WINDOW, sampleRate });
+    this.spectrum = new SpectrumFeatures({ windowSize: WINDOW, sampleRate });
     /**
      * The last window of samples, as a ring.
      * @type {Float32Array}
@@ -131,7 +131,7 @@ export class Analyzer {
     const samples = new Float32Array(WINDOW);
     samples.set(this.ring.subarray(this.write), 0);
     samples.set(this.ring.subarray(0, this.write), WINDOW - this.write);
-    const flux = this.flux.next(samples);
+    const { flux, flatness, bass } = this.spectrum.next(samples);
     this.envelope.push(flux);
     if (this.envelope.length > ENVELOPE_SECONDS * this.envelopeRate) {
       this.envelope.shift();
@@ -148,6 +148,8 @@ export class Analyzer {
       time: this.total / this.sampleRate,
       levelDb: rmsDb(samples.subarray(WINDOW - HOP)),
       flux,
+      flatness,
+      bass,
       tempo: this.tempo,
     };
   }

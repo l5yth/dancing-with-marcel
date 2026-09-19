@@ -205,12 +205,12 @@ describe('eval', () => {
 
   it('C13: a tunable given on the command line reaches the pipeline', () => {
     const audio = concat(room(2, DECODE_RATE), drums(120, 14, DECODE_RATE));
-    const loose = run(['a.mp3', '--musicDb', '-70', '--breakDb', '-80', '--musicEnterMs', '0'], {
+    const loose = run(['a.mp3'], { 'a.mp3': audio });
+    const strict = run(['a.mp3', '--musicOverFloorDb', '60', '--breakUnderFloorDb', '59'], {
       'a.mp3': audio,
     });
-    const strict = run(['a.mp3', '--musicDb', '-5', '--breakDb', '-10'], { 'a.mp3': audio });
-    assert.equal(Number(fields(loose.out.at(-1)).music), 1, 'room noise counts as music');
-    assert.equal(Number(fields(strict.out.at(-1)).music), 0, 'nothing is loud enough');
+    assert.ok(Number(fields(loose.out.at(-1)).music) > 0.8, 'the drums are music by default');
+    assert.equal(Number(fields(strict.out.at(-1)).music), 0, 'nothing is 60 dB over the room');
   });
 
   it('C13: audio too short to analyze reports an empty run instead of failing', () => {

@@ -22,7 +22,7 @@
  */
 
 import { Analyzer } from '../dsp/analyzer.js';
-import { LevelGate } from './level-gate.js';
+import { Classifier } from './classifier.js';
 
 /** Samples between two analysis frames; matches the analyzer's hop. */
 const HOP = 512;
@@ -66,9 +66,9 @@ export class Pipeline {
     });
     /**
      * Break or music, with hysteresis.
-     * @type {LevelGate}
+     * @type {Classifier}
      */
-    this.gate = new LevelGate(config);
+    this.gate = new Classifier(config);
     /**
      * Milliseconds of audio one hop covers.
      * @type {number}
@@ -119,13 +119,18 @@ export class Pipeline {
    * @returns {PipelineEvent} The decision.
    */
   step(frame) {
-    const state = this.gate.update(frame.levelDb, this.hopMs);
+    const state = this.gate.update(frame, this.hopMs);
     const confident =
       frame.tempo !== null && frame.tempo.confidence >= this.config.tempoMinConfidence;
     this.trackTempo(state, confident ? frame.tempo : null);
     return {
       time: frame.time,
-      levelDb: frame.levelDb,
+      levelDb: this.gate.levelDb ?? frame.levelDb,
+      floorDb: this.gate.floorDb,
+      flatness: this.gate.flatness,
+      bass: this.gate.bass,
+      flux: this.gate.flux,
+      onsets: this.gate.onsets,
       state,
       bpm: frame.tempo?.bpm ?? null,
       confidence: frame.tempo?.confidence ?? 0,

@@ -97,10 +97,13 @@ describe('pages check', () => {
     assert.equal(resolveRequest(root, '/dancing-with-marcel/src/../../etc/passwd'), null);
   });
 
-  it('A8: htmlReferences finds src and href, minus fragments and data URIs', () => {
+  it('A8: htmlReferences finds what the page loads, and ignores where a reader may go', () => {
     const html =
       '<link href="./a.css"><script src="./b.js"></script><a href="#top">x</a><img src="data:image/png;base64,AA">';
     assert.deepEqual(htmlReferences(html), ['./a.css', './b.js']);
+    assert.deepEqual(htmlReferences('<a href="https://example.com/">out</a>'), []);
+    assert.deepEqual(htmlReferences('<a href="./page.html">over</a>'), []);
+    assert.deepEqual(htmlReferences('<link rel="icon" href="data:,">'), []);
   });
 
   it('A8: cssReferences finds url() and @import, minus data URIs', () => {

@@ -29,15 +29,50 @@ describe('view text', () => {
     assert.equal(statusText('error'), 'error: ');
   });
 
-  it('unit: the overlay shows level, state, and both switch rules', () => {
-    assert.equal(
-      overlayText(-31.234, 'music', DEFAULTS),
-      [
-        'level -31.2 dB',
-        'state music',
-        'music: at least -40 dB for 1000 ms',
-        'break: at most -50 dB for 2000 ms',
-      ].join('\n'),
-    );
+  it('unit: the overlay shows every measurement next to the threshold it must clear', () => {
+    /** @type {PipelineEvent} */
+    const event = {
+      time: 12,
+      levelDb: -31.234,
+      floorDb: -58.5,
+      flatness: 0.42,
+      bass: 0.71,
+      flux: 1.23,
+      onsets: 37,
+      state: 'music',
+      bpm: 179.6,
+      confidence: 0.44,
+      danceBpm: 179.6,
+      locked: true,
+    };
+    const lines = overlayText(event, DEFAULTS).split('\n');
+    assert.equal(lines[0], 'state    music');
+    assert.match(lines[1], /^level\s+-31\.2 dB\s+floor -58\.5 dB\s+need -46\.5 dB$/);
+    assert.match(lines[2], /^flatness 0\.42\s+need at most 0\.6$/);
+    assert.match(lines[3], /^bass\s+0\.71\s+need at least 0\.15$/);
+    assert.match(lines[4], /^onsets\s+37 of them, loudest 1\.23\s+need 4 over 0\.1$/);
+    assert.match(lines[5], /^tempo\s+180 bpm at 0\.44\s+need 0\.3$/);
+    assert.equal(lines[6], 'dance    179.6 bpm');
+  });
+
+  it('unit: the overlay says when no tempo has been found and the dance speed is a guess', () => {
+    /** @type {PipelineEvent} */
+    const event = {
+      time: 1,
+      levelDb: -60,
+      floorDb: -60,
+      flatness: 1,
+      bass: 0,
+      flux: 0,
+      onsets: 0,
+      state: 'break',
+      bpm: null,
+      confidence: 0,
+      danceBpm: DEFAULTS.defaultBpm,
+      locked: false,
+    };
+    const lines = overlayText(event, DEFAULTS).split('\n');
+    assert.match(lines[5], /^tempo\s+none bpm at 0\.00/);
+    assert.equal(lines[6], 'dance    140.0 bpm (default)');
   });
 });

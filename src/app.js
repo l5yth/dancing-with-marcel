@@ -15,15 +15,14 @@
 */
 
 /**
- * @file Wiring: page elements, capture, level gate, and text (bucket B1).
- * Browser globals arrive through the `Env` type, so the wiring runs in unit tests.
+ * @file Wiring: page elements, capture, and the pipeline. Browser globals
+ * arrive through the `Env` type, so the wiring runs in unit tests.
  */
 
 import { Capture } from './audio/capture.js';
 import { debugLabel } from './classify/label.js';
-import { LevelGate } from './classify/level-gate.js';
+import { Pipeline } from './classify/pipeline.js';
 import { isDebug, parseConfig } from './config.js';
-import { rmsDb, SILENCE_DB } from './dsp/level.js';
 import { overlayText, statusText } from './view/text.js';
 
 /** Milliseconds of audio between two refreshes of the debug overlay. */
@@ -46,8 +45,8 @@ function element(document, id) {
 }
 
 /**
- * Wire the page: the start button begins capture, every frame feeds the level
- * gate, and the debug word follows its state.
+ * Wire the page: the start button begins capture, every frame feeds the
+ * pipeline, and the debug word follows its state.
  *
  * @param {Env} env Browser globals.
  * @returns {Capture} The capture, for inspection.
@@ -60,8 +59,12 @@ export function boot(env) {
   const label = element(document, 'label');
   const overlay = element(document, 'overlay');
   overlay.hidden = !debug;
+  element(document, 'repo').hidden = !debug;
 
-  const gate = new LevelGate(config);
+  /** @type {Pipeline | null} */
+  let pipeline = null;
+  /** @type {PipelineEvent | null} */
+  let last = null;
   let overlayMs = 0;
 
   const capture = new Capture({
@@ -69,22 +72,27 @@ export function boot(env) {
     AudioContext: env.AudioContext,
     AudioWorkletNode: env.AudioWorkletNode,
     workletUrl: new URL('./audio/worklet.js', import.meta.url),
-    /** Feed one frame to the gate and refresh the text. */
+    /** Feed one frame to the pipeline and refresh the text. */
     onFrame(frame, sampleRate) {
-      const frameMs = (frame.length / sampleRate) * 1000;
-      const state = gate.update(rmsDb(frame), frameMs);
-      label.textContent = debugLabel(state);
-      overlayMs += frameMs;
-      if (debug && overlayMs >= OVERLAY_INTERVAL_MS) {
+      pipeline ??= new Pipeline({ config, sampleRate });
+      for (const event of pipeline.push(frame)) {
+        last = event;
+        label.textContent = debugLabel(event.state, event.locked ? event.danceBpm : null);
+      }
+      overlayMs += (frame.length / sampleRate) * 1000;
+      if (debug && last !== null && overlayMs >= OVERLAY_INTERVAL_MS) {
         overlayMs = 0;
-        overlay.textContent = overlayText(gate.levelDb ?? SILENCE_DB, state, config);
+        overlay.textContent = overlayText(last, config);
       }
     },
     /** Show the start button and status text while not running, the debug word once running. */
     onStatus(status, detail) {
       start.hidden = status === 'starting' || status === 'running';
-      label.textContent =
-        status === 'running' ? debugLabel(gate.state) : statusText(status, detail);
+      if (status !== 'running') {
+        label.textContent = statusText(status, detail);
+      } else if (last === null) {
+        label.textContent = 'break';
+      }
     },
   });
   start.addEventListener('click', () => capture.start());

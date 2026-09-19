@@ -115,15 +115,27 @@ export function serve(root) {
 }
 
 /**
- * URLs an HTML page loads: every `src` and `href`, minus fragments and data URIs.
+ * URLs an HTML page loads by itself: every `src`, and the `href` of a `<link>`.
+ * The `href` of an anchor is where a reader may choose to go, not something the
+ * page fetches, so it is not followed.
  *
  * @param {string} html HTML source.
- * @returns {string[]} References as written.
+ * @returns {string[]} References as written, minus fragments and data URIs.
  */
 export function htmlReferences(html) {
-  return [...html.matchAll(/\b(?:src|href)="([^"]+)"/g)]
-    .map((match) => match[1])
-    .filter((ref) => !ref.startsWith('#') && !ref.startsWith('data:'));
+  /** @type {string[]} */
+  const references = [];
+  for (const [, tag, attributes] of html.matchAll(/<([a-zA-Z]+)\b([^>]*)>/g)) {
+    const source = /\bsrc="([^"]+)"/.exec(attributes);
+    if (source !== null) {
+      references.push(source[1]);
+    }
+    const href = tag.toLowerCase() === 'link' ? /\bhref="([^"]+)"/.exec(attributes) : null;
+    if (href !== null) {
+      references.push(href[1]);
+    }
+  }
+  return references.filter((ref) => !ref.startsWith('#') && !ref.startsWith('data:'));
 }
 
 /**

@@ -20,6 +20,7 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { boot } from '../src/app.js';
 import { createAudioStack, createFakeDocument, namedError } from './helpers/fakes.js';
+import { drums, silence } from './helpers/synth.js';
 
 /**
  * Build the app on fakes.
@@ -52,26 +53,35 @@ async function click(document) {
   await document.elements.start.listeners.click();
 }
 
+/** Sample rate of the fake audio context. */
+const RATE = 48000;
+
 /**
- * Post frames of a constant sample value, like the worklet would.
+ * Post audio to the page in 512-sample frames, like the worklet would.
  *
  * @param {any} stack The fake audio stack.
- * @param {number} count Number of 512-sample frames.
- * @param {number} value Sample value; 0.5 is -6 dBFS, 0 is silence.
+ * @param {Float32Array} audio The samples.
  */
-function push(stack, count, value) {
+function push(stack, audio) {
   const { port } = stack.log.nodes[0];
-  for (let index = 0; index < count; index += 1) {
-    port.onmessage({ data: new Float32Array(512).fill(value) });
+  for (let offset = 0; offset + 512 <= audio.length; offset += 512) {
+    port.onmessage({ data: audio.slice(offset, offset + 512) });
   }
 }
 
 describe('app', () => {
-  it('unit: the page starts idle: button shown, overlay hidden', () => {
+  it('unit: the page starts idle: button shown, overlay and repository link hidden', () => {
     const { document, env } = setup();
     boot(env);
     assert.equal(document.elements.start.hidden, false);
     assert.equal(document.elements.overlay.hidden, true);
+    assert.equal(document.elements.repo.hidden, true);
+  });
+
+  it('unit: ?debug=1 also shows the repository link', () => {
+    const { document, env } = setup({ search: '?debug=1' });
+    boot(env);
+    assert.equal(document.elements.repo.hidden, false);
   });
 
   it('C12: the worklet module URL is relative to the app and points at a real file', async () => {
@@ -93,13 +103,13 @@ describe('app', () => {
     assert.equal(document.elements.label.textContent, 'break');
   });
 
-  it('unit: loud frames turn the word to music after musicEnterMs, not before', async () => {
+  it('unit: music turns the word to music after musicEnterMs, not before', async () => {
     const { stack, document, env } = setup();
     boot(env);
     await click(document);
-    push(stack, 90, 0.5);
+    push(stack, drums(120, 0.8, RATE));
     assert.equal(document.elements.label.textContent, 'break');
-    push(stack, 10, 0.5);
+    push(stack, drums(120, 2, RATE));
     assert.equal(document.elements.label.textContent, 'music');
   });
 
@@ -107,16 +117,16 @@ describe('app', () => {
     const { stack, document, env } = setup();
     boot(env);
     await click(document);
-    push(stack, 300, 0);
+    push(stack, silence(4, RATE));
     assert.equal(document.elements.label.textContent, 'break');
   });
 
-  it('unit: URL parameters reach the gate', async () => {
-    const { stack, document, env } = setup({ search: '?musicEnterMs=0' });
+  it('unit: URL parameters reach the classifier', async () => {
+    const { stack, document, env } = setup({ search: '?musicOverFloorDb=60&breakUnderFloorDb=59' });
     boot(env);
     await click(document);
-    push(stack, 1, 0.5);
-    assert.equal(document.elements.label.textContent, 'music');
+    push(stack, drums(120, 4, RATE));
+    assert.equal(document.elements.label.textContent, 'break', 'nothing is 60 dB over the room');
   });
 
   it('unit: the overlay shows live values only with ?debug=1', async () => {
@@ -124,15 +134,14 @@ describe('app', () => {
     boot(debug.env);
     assert.equal(debug.document.elements.overlay.hidden, false);
     await click(debug.document);
-    push(debug.stack, 9, 0.5);
     assert.equal(debug.document.elements.overlay.textContent, '');
-    push(debug.stack, 1, 0.5);
-    assert.match(debug.document.elements.overlay.textContent, /level -6\.0 dB\nstate break/);
+    push(debug.stack, drums(120, 3, RATE));
+    assert.match(debug.document.elements.overlay.textContent, /^state\s+music\nlevel\s+-\d/);
 
     const plain = setup();
     boot(plain.env);
     await click(plain.document);
-    push(plain.stack, 20, 0.5);
+    push(plain.stack, drums(120, 3, RATE));
     assert.equal(plain.document.elements.overlay.textContent, '');
   });
 

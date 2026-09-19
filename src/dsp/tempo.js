@@ -41,6 +41,14 @@ const SMOOTHING_KERNEL = [1, 2, 3, 2, 1];
 const LAG_STEP = 0.25;
 
 /**
+ * How large the peaks must be against the envelope itself before a tempo is
+ * reported. A steady sound has a nearly constant envelope, which correlates
+ * perfectly with itself at every lag and would otherwise yield a confident
+ * tempo out of rounding noise.
+ */
+const MIN_PEAK_RATIO = 0.05;
+
+/**
  * Keep what stands out from its surroundings: subtract a centered moving
  * average, rectify, widen each onset a little, and remove the mean.
  *
@@ -90,7 +98,8 @@ function emphasizePeaks(envelope, rate) {
  * @param {number} rate Envelope rate in Hz (hops per second).
  * @param {{bpmMin: number, bpmMax: number}} range Allowed tempo range in beats per minute.
  * @returns {TempoEstimate | null} The estimate, or `null` when the envelope is
- *   too short to hold the slowest period four times, or has no variation.
+ *   too short to hold the slowest period four times, or is too flat to carry a
+ *   rhythm.
  */
 export function estimateTempo(envelope, rate, { bpmMin, bpmMax }) {
   const lagMin = Math.max(1, (60 * rate) / bpmMax);
@@ -102,11 +111,13 @@ export function estimateTempo(envelope, rate, { bpmMin, bpmMax }) {
   }
   const peaks = emphasizePeaks(envelope, rate);
   let variance = 0;
-  for (const value of peaks) {
-    variance += value * value;
+  let total = 0;
+  for (let index = 0; index < count; index += 1) {
+    variance += peaks[index] * peaks[index];
+    total += envelope[index];
   }
   variance /= count;
-  if (variance < 1e-12) {
+  if (variance < 1e-12 || Math.sqrt(variance) < (MIN_PEAK_RATIO * total) / count) {
     return null;
   }
 

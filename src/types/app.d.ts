@@ -15,10 +15,22 @@ type CaptureStatus = 'idle' | 'starting' | 'running' | 'denied' | 'error';
 
 /** All tunables (SPEC D8). */
 interface Config {
-  /** Smoothed level at or above which audio counts as music-like, in dBFS. */
-  musicDb: number;
-  /** Smoothed level at or below which audio counts as break-like, in dBFS. */
-  breakDb: number;
+  /** How far above the room floor audio must sit to count as music, in dB. */
+  musicOverFloorDb: number;
+  /** How far above the room floor music must stay to keep dancing, in dB. */
+  breakUnderFloorDb: number;
+  /** Flattest spectrum that still counts as music, from 0 for a tone to 1 for noise. */
+  maxFlatness: number;
+  /** Least bass that counts as a pulse, as a share of the energy. */
+  minBass: number;
+  /** Onset strength at which a moment counts as an onset rather than a steady sound. */
+  minFlux: number;
+  /** How many onsets the timbre window needs before the audio counts as moving. */
+  minOnsets: number;
+  /** How far back tonality and bass are read, in milliseconds. */
+  timbreWindowMs: number;
+  /** How fast the room floor climbs back towards a louder room, in dB per second. */
+  floorRiseDbPerSec: number;
   /** Sustained music-like time needed to enter `music`, in milliseconds. */
   musicEnterMs: number;
   /** Sustained break-like time needed to leave `music`, in milliseconds. */
@@ -48,6 +60,16 @@ interface TempoEstimate {
   confidence: number;
 }
 
+/** What one frame's spectrum looks like. */
+interface SpectrumFrame {
+  /** Onset strength: the positive change of the log spectrum since the previous frame. */
+  flux: number;
+  /** How noise-like the frame is, from 0 for a pure tone to 1 for white noise. */
+  flatness: number;
+  /** Share of the energy below the bass cutoff, from 0 to 1. */
+  bass: number;
+}
+
 /** What the analyzer reports for one 512-sample hop. */
 interface AnalyzerFrame {
   /** Seconds of audio processed up to the end of the hop's window. */
@@ -56,6 +78,10 @@ interface AnalyzerFrame {
   levelDb: number;
   /** Onset strength: the positive change of the log spectrum since the previous hop. */
   flux: number;
+  /** How noise-like the hop is, from 0 for a pure tone to 1 for white noise. */
+  flatness: number;
+  /** Share of the hop's energy below the bass cutoff, from 0 to 1. */
+  bass: number;
   /** Latest tempo estimate, or `null` while there is none. */
   tempo: TempoEstimate | null;
 }
@@ -64,8 +90,18 @@ interface AnalyzerFrame {
 interface PipelineEvent {
   /** Seconds of audio processed up to the end of the hop's window. */
   time: number;
-  /** Level of the hop in dBFS. */
+  /** Loudest level of the level window, in dBFS. */
   levelDb: number;
+  /** Learned level of the room, in dBFS. */
+  floorDb: number;
+  /** Flattest spectrum among the audible hops of the timbre window. */
+  flatness: number;
+  /** Most bass among the audible hops of the timbre window. */
+  bass: number;
+  /** Strongest onset among the audible hops of the timbre window. */
+  flux: number;
+  /** How many audible hops of the timbre window carry an onset. */
+  onsets: number;
   /** Classifier state. */
   state: State;
   /** Latest tempo in beats per minute, or `null` while there is none. */

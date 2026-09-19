@@ -53,7 +53,11 @@ function feed(instance, { levelDb, bpm, confidence, ms }) {
     event = instance.step({
       time: elapsed / 1000,
       levelDb,
-      flux: 0,
+      // Tonal, with onsets and bass: a loud frame then looks like music, so the
+      // tempo rules can be exercised without synthesizing audio.
+      flux: 1,
+      flatness: 0.1,
+      bass: 0.9,
       tempo: bpm === null ? null : { bpm, confidence },
     });
   }

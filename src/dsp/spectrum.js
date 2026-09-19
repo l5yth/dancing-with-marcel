@@ -15,16 +15,33 @@
 */
 
 /**
- * @file Onset strength as log-spectral flux (SPEC D7): the positive change of
- * the log-compressed magnitude spectrum from one frame to the next. A drum hit
- * adds energy at once and spikes it; a steady tone or a fading sound does not.
- * The change is averaged inside octave-wide bands and then across bands, so a
- * kick in the lowest octave counts as much as a hat in the highest, instead of
- * being drowned by the hundreds of high-frequency bins. Pure: no browser API
- * (SPEC invariant 4).
+ * @file Per-frame spectral features (SPEC D7). Three numbers come off one FFT:
+ *
+ * - **flux**, the onset strength: the positive change of the log-compressed
+ *   spectrum since the previous frame. A drum hit adds energy at once and
+ *   spikes it; a steady tone or a fading sound does not. The change is averaged
+ *   inside octave-wide bands and then across bands, so a kick in the lowest
+ *   octave counts as much as a hat in the highest, instead of being drowned by
+ *   the hundreds of high-frequency bins.
+ * - **flatness**, how noise-like the frame is: the geometric mean of the
+ *   magnitudes over their arithmetic mean, 0 for a pure tone and 1 for white
+ *   noise. Applause and hiss are flat; music has peaks.
+ * - **bass**, the share of the energy below {@link BASS_HZ}. A band over a PA
+ *   has a kick and a bass guitar; talking and clapping do not.
+ *
+ * Pure: no browser API (SPEC invariant 4).
  */
 
 import { Fft } from './fft.js';
+
+/** Number of octave-wide bands between the lowest and the highest counted frequency. */
+const BAND_COUNT = 8;
+
+/** Frequency below which energy counts as bass, in Hz. */
+export const BASS_HZ = 200;
+
+/** Floor under a magnitude before its logarithm is taken, so silence stays finite. */
+const TINY = 1e-12;
 
 /**
  * Periodic Hann window.
@@ -39,11 +56,8 @@ export function hannWindow(size) {
   );
 }
 
-/** Number of octave-wide bands between the lowest and the highest counted frequency. */
-const BAND_COUNT = 8;
-
 /**
- * @typedef {object} FluxOptions
+ * @typedef {object} SpectrumOptions
  * @property {number} windowSize FFT length and frame length in samples; a power of two.
  * @property {number} sampleRate Sample rate in Hz.
  * @property {number} [minHz] Lowest frequency that counts, in Hz.
@@ -51,12 +65,12 @@ const BAND_COUNT = 8;
  * @property {number} [gamma] Log compression strength; larger reacts to quieter components.
  */
 
-/** Computes the onset strength of consecutive frames. */
-export class FluxExtractor {
+/** Computes the spectral features of consecutive frames. */
+export class SpectrumFeatures {
   /**
-   * Prepare the window, the FFT, and the frequency range.
+   * Prepare the window, the FFT, and the frequency ranges.
    *
-   * @param {FluxOptions} options Frame size, sample rate, and tuning.
+   * @param {SpectrumOptions} options Frame size, sample rate, and tuning.
    */
   constructor({ windowSize, sampleRate, minHz = 30, maxHz = 8000, gamma = 1000 }) {
     /**
@@ -84,6 +98,11 @@ export class FluxExtractor {
      * @type {number}
      */
     this.lastBin = Math.min(windowSize / 2, Math.floor((maxHz * windowSize) / sampleRate));
+    /**
+     * Last FFT bin that counts as bass.
+     * @type {number}
+     */
+    this.bassBin = Math.min(this.lastBin, Math.floor((BASS_HZ * windowSize) / sampleRate));
     /**
      * First bin of every band, plus one past the last bin at the end. Bands
      * are log-spaced and never empty.
@@ -129,23 +148,40 @@ export class FluxExtractor {
   }
 
   /**
-   * Onset strength of the next frame. The first frame has nothing to compare
-   * with and reads 0.
+   * Features of the next frame. The first frame has nothing to compare with
+   * and its flux reads 0.
    *
    * @param {Float32Array} frame The samples, `windowSize` of them.
-   * @returns {number} Mean over the bands of the mean positive change of the
-   *   log spectrum inside each band, at least 0.
+   * @returns {SpectrumFrame} What the frame looks like.
    */
   next(frame) {
-    const { re, im, taper, taperSum, firstBin, lastBin, gamma, current, previous, edges } = this;
+    const { re, im, taper, taperSum, firstBin, lastBin, bassBin, gamma, current, previous, edges } =
+      this;
     for (let index = 0; index < re.length; index += 1) {
       re[index] = frame[index] * taper[index];
       im[index] = 0;
     }
     this.fft.transform(re, im);
+
+    let sum = 0;
+    let logSum = 0;
+    let bassPower = 0;
+    let totalPower = 0;
     for (let bin = firstBin; bin <= lastBin; bin += 1) {
-      current[bin - firstBin] = Math.log1p((gamma * Math.hypot(re[bin], im[bin])) / taperSum);
+      const magnitude = Math.hypot(re[bin], im[bin]) / taperSum;
+      current[bin - firstBin] = Math.log1p(gamma * magnitude);
+      sum += magnitude;
+      logSum += Math.log(magnitude + TINY);
+      const power = magnitude * magnitude;
+      totalPower += power;
+      if (bin <= bassBin) {
+        bassPower += power;
+      }
     }
+    const bins = lastBin - firstBin + 1;
+    const arithmetic = sum / bins;
+    const geometric = Math.exp(logSum / bins);
+
     let flux = 0;
     if (this.hasPrevious) {
       for (let band = 0; band < BAND_COUNT; band += 1) {
@@ -160,6 +196,10 @@ export class FluxExtractor {
     this.current = previous;
     this.previous = current;
     this.hasPrevious = true;
-    return flux;
+    return {
+      flux,
+      flatness: arithmetic < TINY ? 1 : Math.min(1, geometric / arithmetic),
+      bass: totalPower < TINY ? 0 : bassPower / totalPower,
+    };
   }
 }

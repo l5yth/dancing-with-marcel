@@ -74,6 +74,24 @@ describe('estimateTempo', () => {
     assert.equal(estimateTempo(spikes(100, 120, 8), 100, { bpmMin: 190, bpmMax: 95 }), null);
   });
 
+  it('C15: a steady sound reports no tempo, however faint its ripple', () => {
+    const rand = mulberry32(11);
+    for (const ripple of [1e-9, 1e-6, 1e-3]) {
+      const envelope = Float64Array.from({ length: 800 }, () => 0.02 + ripple * (rand() - 0.5));
+      assert.equal(estimateTempo(envelope, 100, RANGE), null, `ripple ${ripple}`);
+    }
+  });
+
+  it('C15: peaks that are large against the envelope still give a tempo', () => {
+    const rate = 100;
+    const envelope = Float64Array.from({ length: 800 }, (_, index) =>
+      index % 50 === 0 ? 1 : 0.02,
+    );
+    const estimate = estimateTempo(envelope, rate, RANGE);
+    assert.ok(estimate !== null);
+    assert.ok(Math.abs(estimate.bpm - 120) < 1, `${estimate.bpm}`);
+  });
+
   it('C15: the confidence stays within 0 and 1', () => {
     const estimate = estimateTempo(spikes(100, 150, 8), 100, RANGE);
     assert.ok(estimate !== null && estimate.confidence >= 0 && estimate.confidence <= 1);

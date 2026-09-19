@@ -23,8 +23,14 @@ describe('config', () => {
   it('C11: the empty query returns the defaults', () => {
     assert.deepEqual(parseConfig(''), DEFAULTS);
     assert.deepEqual(DEFAULTS, {
-      musicDb: -40,
-      breakDb: -50,
+      musicOverFloorDb: 12,
+      breakUnderFloorDb: 8,
+      maxFlatness: 0.6,
+      minBass: 0.15,
+      minFlux: 0.1,
+      minOnsets: 4,
+      timbreWindowMs: 1500,
+      floorRiseDbPerSec: 3,
       musicEnterMs: 1000,
       breakHoldMs: 2000,
       levelWindowMs: 400,
@@ -60,8 +66,8 @@ describe('config', () => {
   it('C11: a valid override wins, with or without the leading question mark', () => {
     assert.equal(parseConfig('?breakHoldMs=4000').breakHoldMs, 4000);
     assert.equal(parseConfig('breakHoldMs=4000').breakHoldMs, 4000);
-    assert.equal(parseConfig('?musicDb=-30&breakDb=-35').musicDb, -30);
-    assert.equal(parseConfig('?musicDb=-30&breakDb=-35').breakDb, -35);
+    assert.equal(parseConfig('?musicOverFloorDb=20&breakUnderFloorDb=15').musicOverFloorDb, 20);
+    assert.equal(parseConfig('?musicOverFloorDb=20&breakUnderFloorDb=15').breakUnderFloorDb, 15);
   });
 
   it('C11: bounds are inclusive', () => {
@@ -85,7 +91,14 @@ describe('config', () => {
     assert.equal(configWith({ breakHoldMs: 4000 }).breakHoldMs, 4000);
     assert.equal(configWith({ breakHoldMs: 99999 }).breakHoldMs, DEFAULTS.breakHoldMs);
     assert.equal(configWith({ breakHoldMs: Number.NaN }).breakHoldMs, DEFAULTS.breakHoldMs);
-    assert.equal(configWith({ musicDb: -60, breakDb: -30 }).musicDb, DEFAULTS.musicDb);
+    assert.equal(
+      configWith({ musicOverFloorDb: 5, breakUnderFloorDb: 20 }).musicOverFloorDb,
+      DEFAULTS.musicOverFloorDb,
+    );
+    assert.equal(
+      configWith({ levelWindowMs: 5000, timbreWindowMs: 200 }).levelWindowMs,
+      DEFAULTS.levelWindowMs,
+    );
     assert.equal(configWith({ bpmMin: 150, bpmMax: 100 }).bpmMax, DEFAULTS.bpmMax);
     assert.ok(Object.isFrozen(configWith({})));
   });
@@ -121,10 +134,14 @@ describe('config', () => {
   });
 
   it('C11: level thresholds in the wrong order fall back to the defaults', () => {
-    for (const query of ['?musicDb=-60&breakDb=-30', '?musicDb=-45&breakDb=-45', '?musicDb=-60']) {
+    for (const query of [
+      '?musicOverFloorDb=5&breakUnderFloorDb=20',
+      '?musicOverFloorDb=8&breakUnderFloorDb=8',
+      '?musicOverFloorDb=4',
+    ]) {
       const config = parseConfig(query);
-      assert.equal(config.musicDb, DEFAULTS.musicDb, query);
-      assert.equal(config.breakDb, DEFAULTS.breakDb, query);
+      assert.equal(config.musicOverFloorDb, DEFAULTS.musicOverFloorDb, query);
+      assert.equal(config.breakUnderFloorDb, DEFAULTS.breakUnderFloorDb, query);
     }
   });
 

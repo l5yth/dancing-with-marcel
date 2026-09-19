@@ -46,6 +46,11 @@ describe('monochrome', () => {
     assert.deepEqual(findViolations(collectCss(read('index.html'))), [], 'index.html');
   });
 
+  it('A6: links are given the foreground color, since a browser would make them blue', () => {
+    const css = stripComments(read('src/style.css'));
+    assert.match(css, /(^|[\s,}])a\s*\{[^}]*color:\s*var\(--fg\)/);
+  });
+
   it('A6: the shipped stylesheet actually defines both colors', () => {
     const css = stripComments(read('src/style.css'));
     assert.match(css, /--fg:\s*#fff/);
