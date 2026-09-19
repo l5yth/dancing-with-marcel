@@ -16,7 +16,8 @@
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-functions=100 --test-coverage-include=\"src/**\" --test-coverage-include=\"scripts/**\" \"test/**/*.test.js\"",
     "docs": "jsdoc -c jsdoc.json",
     "docs:check": "node scripts/docs-check.mjs",
-    "check:pages": "node scripts/check-pages.mjs"
+    "check:pages": "node scripts/check-pages.mjs",
+    "eval": "node scripts/eval.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

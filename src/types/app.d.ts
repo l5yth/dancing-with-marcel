@@ -23,12 +23,96 @@ interface Config {
   musicEnterMs: number;
   /** Sustained break-like time needed to leave `music`, in milliseconds. */
   breakHoldMs: number;
-  /** Time constant of the level smoothing, in milliseconds. */
-  smoothMs: number;
+  /** How far back the level looks for its loudest hop, in milliseconds. */
+  levelWindowMs: number;
+  /** Slowest tempo the estimator reports, in beats per minute. */
+  bpmMin: number;
+  /** Fastest tempo the estimator reports, in beats per minute. */
+  bpmMax: number;
+  /** Tempo confidence below which no tempo is shown, from 0 to 1. */
+  tempoMinConfidence: number;
+  /** Tempo Marcel dances at before any has been detected, in beats per minute. */
+  defaultBpm: number;
+  /** How long a new tempo must hold before the dance follows it, in milliseconds. */
+  bpmSettleMs: number;
 }
 
 /** Name of one tunable. */
 type ConfigKey = keyof Config;
+
+/** A tempo estimate. */
+interface TempoEstimate {
+  /** Beats per minute. */
+  bpm: number;
+  /** How strongly the audio repeats at that period, from 0 to 1. */
+  confidence: number;
+}
+
+/** What the analyzer reports for one 512-sample hop. */
+interface AnalyzerFrame {
+  /** Seconds of audio processed up to the end of the hop's window. */
+  time: number;
+  /** Level of the hop in dBFS. */
+  levelDb: number;
+  /** Onset strength: the positive change of the log spectrum since the previous hop. */
+  flux: number;
+  /** Latest tempo estimate, or `null` while there is none. */
+  tempo: TempoEstimate | null;
+}
+
+/** What the pipeline decides for one 512-sample hop. */
+interface PipelineEvent {
+  /** Seconds of audio processed up to the end of the hop's window. */
+  time: number;
+  /** Level of the hop in dBFS. */
+  levelDb: number;
+  /** Classifier state. */
+  state: State;
+  /** Latest tempo in beats per minute, or `null` while there is none. */
+  bpm: number | null;
+  /** Confidence of that tempo, from 0 to 1; 0 when there is none. */
+  confidence: number;
+  /** Tempo Marcel dances at, in beats per minute. */
+  danceBpm: number;
+  /** Whether a confident tempo has ever been adopted. */
+  locked: boolean;
+}
+
+/** A stretch of time in which the classifier state did not change. */
+interface Span {
+  /** Seconds at which the span starts. */
+  start: number;
+  /** Seconds at which the span ends. */
+  end: number;
+  /** State held throughout. */
+  state: State;
+  /** Debug word at the end of the span. */
+  label: string;
+}
+
+/** What Marcel did over a stretch of audio. */
+interface Stats {
+  /** Seconds the stretch covers. */
+  duration: number;
+  /** Fraction of hops in the `music` state, from 0 to 1. */
+  music: number;
+  /** Fraction of hops in the `break` state, from 0 to 1. */
+  break: number;
+  /** How often the state changed. */
+  transitions: number;
+  /** Median dance tempo while dancing, or `null` when none locked. */
+  danceBpmMedian: number | null;
+}
+
+/** Analyzer settings. */
+interface AnalyzerOptions {
+  /** Sample rate of the audio, in Hz. */
+  sampleRate: number;
+  /** Slowest tempo to report, in beats per minute. */
+  bpmMin: number;
+  /** Fastest tempo to report, in beats per minute. */
+  bpmMax: number;
+}
 
 /** Receives one 512-sample mono frame and the sample rate of the audio context, in Hz. */
 type FrameHandler = (frame: Float32Array, sampleRate: number) => void;

@@ -18,9 +18,21 @@
  * @file Level-only break/music gate with hysteresis. Bucket B1 placeholder:
  * the tempo-aware classifier replaces it in B4 (SPEC D2, D7). Pure: time
  * advances only through the frame durations it is fed (SPEC invariant 4).
+ *
+ * The level is the loudest hop of the last `levelWindowMs`, not an average.
+ * Music is mostly gaps between hits, and a silent hop reads -120 dBFS, so an
+ * average would drag a drum track down towards silence and call it a break. A
+ * peak that expires also falls as soon as the window empties, which an
+ * exponential average does not: from a loud song to silence it would need
+ * several time constants, and the break would land late.
  */
 
-/** Level gate: `break` and `music` from the smoothed level alone. */
+import { SILENCE_DB } from '../dsp/level.js';
+
+/** Most hops the peak window may hold, whatever the frame length. */
+const MAX_WINDOW_HOPS = 4096;
+
+/** Level gate: `break` and `music` from the recent peak level alone. */
 export class LevelGate {
   /**
    * Create a gate in the `break` state.
@@ -44,10 +56,15 @@ export class LevelGate {
      */
     this.heldMs = 0;
     /**
-     * Smoothed level in dBFS; `null` before the first reading.
+     * Loudest hop in the window, in dBFS; `null` before the first reading.
      * @type {number | null}
      */
-    this.smoothedDb = null;
+    this.levelDb = null;
+    /**
+     * Power of each hop in the window, oldest first.
+     * @type {number[]}
+     */
+    this.recent = [];
   }
 
   /**
@@ -58,18 +75,21 @@ export class LevelGate {
    * @returns {State} The state after this reading.
    */
   update(levelDb, frameMs) {
-    const { musicDb, breakDb, musicEnterMs, breakHoldMs, smoothMs } = this.config;
-    const alpha = 1 - Math.exp(-frameMs / smoothMs);
-    this.smoothedDb =
-      this.smoothedDb === null ? levelDb : this.smoothedDb + alpha * (levelDb - this.smoothedDb);
+    const { musicDb, breakDb, musicEnterMs, breakHoldMs, levelWindowMs } = this.config;
+    const hops = Math.min(MAX_WINDOW_HOPS, Math.max(1, Math.round(levelWindowMs / frameMs)));
+    this.recent.push(10 ** (levelDb / 10));
+    while (this.recent.length > hops) {
+      this.recent.shift();
+    }
+    this.levelDb = Math.max(SILENCE_DB, 10 * Math.log10(Math.max(...this.recent)));
     if (this.state === 'break') {
-      this.heldMs = this.smoothedDb >= musicDb ? this.heldMs + frameMs : 0;
+      this.heldMs = this.levelDb >= musicDb ? this.heldMs + frameMs : 0;
       if (this.heldMs >= musicEnterMs) {
         this.state = 'music';
         this.heldMs = 0;
       }
     } else {
-      this.heldMs = this.smoothedDb <= breakDb ? this.heldMs + frameMs : 0;
+      this.heldMs = this.levelDb <= breakDb ? this.heldMs + frameMs : 0;
       if (this.heldMs >= breakHoldMs) {
         this.state = 'break';
         this.heldMs = 0;

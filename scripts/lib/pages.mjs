@@ -44,22 +44,6 @@ export const BASE_PATH = '/dancing-with-marcel/';
  */
 
 /**
- * Fetch with the shape of the global `fetch`.
- *
- * @callback FetchFunction
- * @param {URL | string} url What to fetch.
- * @returns {Promise<Response>} The response.
- */
-
-/**
- * Output sink.
- *
- * @callback LogFunction
- * @param {string} line One line of output.
- * @returns {void}
- */
-
-/**
  * Content types the static server sends, by file extension.
  *
  * @type {Record<string, string>}

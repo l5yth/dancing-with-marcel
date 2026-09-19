@@ -58,33 +58,6 @@ const DOCUMENTED_KINDS = new Set(['function', 'class', 'typedef', 'constant', 'n
  */
 
 /**
- * What the check reads from a finished child process.
- *
- * @typedef {object} SpawnResult
- * @property {number | null} status Exit code.
- * @property {string} stdout Standard output.
- * @property {string} stderr Standard error.
- */
-
-/**
- * Process runner with the shape of `spawnSync`.
- *
- * @callback SpawnFunction
- * @param {string} command Executable to run.
- * @param {string[]} args Arguments.
- * @param {*} options Spawn options.
- * @returns {SpawnResult} What the child produced.
- */
-
-/**
- * Output sink.
- *
- * @callback LogFunction
- * @param {string} line One line of output.
- * @returns {void}
- */
-
-/**
  * Supplies the declaration files to check.
  *
  * @callback ReadTypes
@@ -93,8 +66,9 @@ const DOCUMENTED_KINDS = new Set(['function', 'class', 'typedef', 'constant', 'n
 
 /**
  * Whether a symbol needs a doc comment: functions, classes, typedefs,
- * constants, namespaces, and class fields. Object-literal properties and
- * function-local symbols are not API.
+ * constants, namespaces, and class fields. Object-literal properties,
+ * function-local symbols, and element writes such as `this.ring[index] = x`
+ * (JSDoc reports them as members with a computed name) are not API.
  *
  * @param {Doclet} doclet A doclet.
  * @returns {boolean} `true` when the symbol must be documented.
@@ -103,6 +77,7 @@ function needsDocs(doclet) {
   return (
     doclet.scope !== 'inner' &&
     !doclet.longname.includes('<anonymous>') &&
+    !doclet.longname.includes('[') &&
     (DOCUMENTED_KINDS.has(doclet.kind) || (doclet.kind === 'member' && doclet.scope === 'instance'))
   );
 }
@@ -156,16 +131,21 @@ export function findUndocumentedDeclarations({ file, source }) {
   );
 }
 
+/** Directories whose declaration files must be documented. */
+export const TYPE_DIRS = ['src/types', 'scripts/types'];
+
 /**
- * Read every `.d.ts` file in a directory.
+ * Read every `.d.ts` file in some directories.
  *
- * @param {string} dir Directory to read.
+ * @param {string[]} dirs Directories to read.
  * @returns {TypeFile[]} The files.
  */
-export function readTypeFiles(dir) {
-  return readdirSync(dir)
-    .filter((name) => name.endsWith('.d.ts'))
-    .map((name) => ({ file: join(dir, name), source: readFileSync(join(dir, name), 'utf8') }));
+export function readTypeFiles(dirs) {
+  return dirs.flatMap((dir) =>
+    readdirSync(dir)
+      .filter((name) => name.endsWith('.d.ts'))
+      .map((name) => ({ file: join(dir, name), source: readFileSync(join(dir, name), 'utf8') })),
+  );
 }
 
 /**
@@ -175,14 +155,14 @@ export function readTypeFiles(dir) {
  * @param {string} options.toolsDir Directory that holds the `jsdoc` and `tsc` executables.
  * @param {SpawnFunction} [options.spawn] Process runner.
  * @param {LogFunction} [options.log] Output sink.
- * @param {ReadTypes} [options.readTypes] Supplies the declaration files; defaults to `src/types`.
+ * @param {ReadTypes} [options.readTypes] Supplies the declaration files; defaults to {@link TYPE_DIRS}.
  * @returns {number} Exit code: 0 when nothing is undocumented and the types check, 1 otherwise.
  */
 export function runDocsCheck({
   toolsDir,
   spawn = /** @type {SpawnFunction} */ (/** @type {unknown} */ (spawnSync)),
   log = console.log,
-  readTypes = () => readTypeFiles('src/types'),
+  readTypes = () => readTypeFiles(TYPE_DIRS),
 }) {
   const jsdoc = spawn(`${toolsDir}/jsdoc`, ['-c', 'jsdoc.json', '-X'], {
     encoding: 'utf8',
@@ -193,7 +173,7 @@ export function runDocsCheck({
     return 1;
   }
   const missing = [
-    ...findUndocumented(JSON.parse(jsdoc.stdout)),
+    ...findUndocumented(JSON.parse(String(jsdoc.stdout))),
     ...readTypes().flatMap(findUndocumentedDeclarations),
   ];
   for (const line of missing) {

@@ -20,10 +20,11 @@
  */
 
 import { Capture } from './audio/capture.js';
+import { debugLabel } from './classify/label.js';
 import { LevelGate } from './classify/level-gate.js';
 import { isDebug, parseConfig } from './config.js';
 import { rmsDb, SILENCE_DB } from './dsp/level.js';
-import { debugLabel, overlayText, statusText } from './view/text.js';
+import { overlayText, statusText } from './view/text.js';
 
 /** Milliseconds of audio between two refreshes of the debug overlay. */
 const OVERLAY_INTERVAL_MS = 100;
@@ -76,7 +77,7 @@ export function boot(env) {
       overlayMs += frameMs;
       if (debug && overlayMs >= OVERLAY_INTERVAL_MS) {
         overlayMs = 0;
-        overlay.textContent = overlayText(gate.smoothedDb ?? SILENCE_DB, state, config);
+        overlay.textContent = overlayText(gate.levelDb ?? SILENCE_DB, state, config);
       }
     },
     /** Show the start button and status text while not running, the debug word once running. */

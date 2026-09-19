@@ -13,9 +13,29 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Tune
 
-- `?debug=1` shows the live level
+Add parameters to the URL:
+
+- `?debug=1` shows the live values
 - `?musicDb=-38&breakDb=-48` sets the level thresholds in dBFS
 - `?musicEnterMs=1000&breakHoldMs=2000` sets the switch delays
+- `?levelWindowMs=400` sets how far back the level looks for its loudest moment
+- `?bpmMin=95&bpmMax=190` sets the tempo range
+- `?tempoMinConfidence=0.3` sets how sure a tempo must be to count
+- `?defaultBpm=140&bpmSettleMs=3000` sets the dance tempo before one is
+  detected, and how long a new one must hold
+
+## Check audio files
+
+Needs `ffmpeg`.
+
+```
+npm run eval -- song.mp3 other.mp3 --gap 6
+```
+
+- `--gap <seconds>` inserts silence between files
+- `--<parameter> <value>` overrides any parameter from Tune
+- Output: one line per state change, a `file-summary:` line per file, and a
+  final `summary:` line
 
 ## Develop
 

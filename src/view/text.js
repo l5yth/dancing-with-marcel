@@ -15,19 +15,10 @@
 */
 
 /**
- * @file Text shown on the page: the debug word, capture status messages, and
- * the `?debug=1` overlay. Placeholder wording; design is deferred (SPEC D10).
+ * @file Text shown on the page: capture status messages and the `?debug=1`
+ * overlay. The debug word itself comes from `classify/label.js`, which the
+ * offline eval prints too. Placeholder wording; design is deferred (SPEC D10).
  */
-
-/**
- * The debug word for a classifier state (SPEC D2). Bucket B4 adds the tempo.
- *
- * @param {State} state Classifier state.
- * @returns {string} `break` or `music`.
- */
-export function debugLabel(state) {
-  return state;
-}
 
 /**
  * Message for a capture status that is not `running`.
@@ -54,7 +45,7 @@ export function statusText(status, detail = '') {
 /**
  * Text of the `?debug=1` overlay.
  *
- * @param {number} levelDb Smoothed level in dBFS.
+ * @param {number} levelDb Peak level of the recent window in dBFS.
  * @param {State} state Classifier state.
  * @param {Config} config Active configuration.
  * @returns {string} Four lines: level, state, and the two switch rules.

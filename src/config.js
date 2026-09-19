@@ -34,8 +34,18 @@ const PARAMS = {
   musicEnterMs: { default: 1000, min: 0, max: 60000 },
   /** Sustained break-like time needed to leave `music`, in milliseconds. */
   breakHoldMs: { default: 2000, min: 0, max: 60000 },
-  /** Time constant of the level smoothing, in milliseconds. */
-  smoothMs: { default: 250, min: 1, max: 10000 },
+  /** How far back the level looks for its loudest hop, in milliseconds. */
+  levelWindowMs: { default: 400, min: 10, max: 10000 },
+  /** Slowest tempo the estimator reports, in beats per minute. */
+  bpmMin: { default: 95, min: 40, max: 200 },
+  /** Fastest tempo the estimator reports, in beats per minute. */
+  bpmMax: { default: 190, min: 60, max: 400 },
+  /** Tempo confidence below which no tempo is shown, from 0 to 1. */
+  tempoMinConfidence: { default: 0.3, min: 0, max: 1 },
+  /** Tempo Marcel dances at before any has been detected, in beats per minute. */
+  defaultBpm: { default: 140, min: 40, max: 400 },
+  /** How long a new tempo must hold before the dance follows it, in milliseconds. */
+  bpmSettleMs: { default: 3000, min: 0, max: 60000 },
 };
 
 /** Names of all tunables, in table order. */
@@ -56,24 +66,21 @@ export const RANGES = Object.freeze(
 );
 
 /**
- * Read the tunables from a URL query string.
+ * Apply overrides to the defaults.
  *
- * A key is taken from its first occurrence. A value that is empty, not a
- * number, or outside its range is ignored. If the result would put `breakDb`
- * at or above `musicDb`, both level thresholds fall back to their defaults.
+ * A value that is not a number or lies outside its range is ignored, and so is
+ * an unknown key. A pair that contradicts itself falls back to both defaults:
+ * `breakDb` at or above `musicDb` would make the state flap, and `bpmMin` at or
+ * above `bpmMax` leaves the tempo estimator no range to search. Every way of
+ * tuning goes through here, so the URL and the offline eval agree.
  *
- * @param {string} search The query string, with or without the leading `?`.
+ * @param {Record<string, number>} overrides Values to change, by tunable name.
  * @returns {Readonly<Config>} A frozen configuration.
  */
-export function parseConfig(search) {
-  const params = new URLSearchParams(search);
+export function configWith(overrides) {
   const config = { ...DEFAULTS };
   for (const key of KEYS) {
-    const raw = params.get(key);
-    if (raw === null || raw.trim() === '') {
-      continue;
-    }
-    const value = Number(raw);
+    const value = overrides[key];
     const [min, max] = RANGES[key];
     if (Number.isFinite(value) && value >= min && value <= max) {
       config[key] = value;
@@ -83,7 +90,31 @@ export function parseConfig(search) {
     config.breakDb = DEFAULTS.breakDb;
     config.musicDb = DEFAULTS.musicDb;
   }
+  if (config.bpmMin >= config.bpmMax) {
+    config.bpmMin = DEFAULTS.bpmMin;
+    config.bpmMax = DEFAULTS.bpmMax;
+  }
   return Object.freeze(config);
+}
+
+/**
+ * Read the tunables from a URL query string. A key is taken from its first
+ * occurrence; the rules of {@link configWith} then apply.
+ *
+ * @param {string} search The query string, with or without the leading `?`.
+ * @returns {Readonly<Config>} A frozen configuration.
+ */
+export function parseConfig(search) {
+  const params = new URLSearchParams(search);
+  /** @type {Record<string, number>} */
+  const overrides = {};
+  for (const key of KEYS) {
+    const raw = params.get(key);
+    if (raw !== null && raw.trim() !== '') {
+      overrides[key] = Number(raw);
+    }
+  }
+  return configWith(overrides);
 }
 
 /**
