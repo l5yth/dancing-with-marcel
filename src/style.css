@@ -75,17 +75,30 @@ button:focus-visible {
   outline-offset: 4px;
 }
 
-#overlay {
+/*
+  Debug text lies over the art, so it sets its own size and carries its own
+  ground; inheriting a size from the body and nothing behind it leaves it
+  competing with the figure for the same cells. The repository link is debug
+  information too, so it is set the same way rather than as a bare link.
+*/
+#overlay,
+#repo {
   position: fixed;
-  left: 1rem;
   bottom: 1rem;
   margin: 0;
+  padding: 0.35rem 0.6rem;
+  background: var(--bg);
+  font-family: ui-monospace, "DejaVu Sans Mono", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+#overlay {
+  left: 1rem;
 }
 
 #repo {
-  position: fixed;
   right: 1rem;
-  bottom: 1rem;
 }
 
 a {

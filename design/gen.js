@@ -1,6 +1,28 @@
-/* ASCII punk sprite generator.
+/*
+   Copyright (C) 2026 Afri Blanck (@l5yth)
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+*/
+
+/* ASCII punk sprite generator: the source of src/sprites/ (SPEC D10).
+
+   It draws a lightness map. A cell's value is how much light reaches the eye
+   there, so the ramp runs from blank for black to '$' for the brightest mark,
+   and the sheet is painted white on black exactly as it is computed.
+
    NOTE: this file is the BODY of a function — it ends with `return {...}`.
-   Load with:  const GEN = new Function(await readFile('gen.js'))(); */
+   Load with:  const GEN = new Function(await readFile('gen.js'))();
+   Run design/render.mjs after changing it; a test compares the two. */
 
 /* Grid is sized for Courier/monospace at line-height 0.88em: a character cell is
    0.60em wide and 0.88em tall, i.e. aspect 0.682. */
@@ -10,9 +32,6 @@ const CELL_W = CELL_H * 0.682;
 const X0 = -COLS * CELL_W / 2;
 const Y_TOP = 2.09;
 const SS = 3;                       // supersamples per axis
-const OUTLINE_W = CELL_W * 1.05;
-const OUTLINE_TONE = 0.88;
-const OUTLINE_ALB = 0.45;           // only light materials get an ink outline
 const GAMMA = 0.95;
 const CONTRAST = 1.16;
 
@@ -54,15 +73,20 @@ const MAT = {
   metal:    { alb:0.70, shin:1.00, spec:48, rim:0.30 },
   mic:      { alb:0.18, shin:0.60, spec:22, rim:0.45 },
   glass:    { alb:0.46, shin:1.00, spec:38, rim:0.40 },
+  pint:     { alb:0.14, shin:1.00, spec:44, rim:0.52 },
+  beer:     { tone:0.55, flat:true },
+  foam:     { tone:0.05, flat:true },
+  seam:     { tone:0.97, flat:true },
   plastic:  { alb:0.55, shin:0.45, spec:18, rim:0.25 },
   ink:      { tone:0.97, flat:true },
   ink2:     { tone:0.72, flat:true },
-  soft:     { tone:0.22, flat:true },
   glow:     { tone:0.09, flat:true },
 };
 
 function shade(hit, mat) {
-  if (mat.flat) return mat.tone;
+  /* Flat materials are given as ink: `ink` 0.97 is the blackest thing he has.
+     Reading them as light keeps one scale for the whole sheet. */
+  if (mat.flat) return 1 - mat.tone;
   const n = hit.n;
   const nd = Math.max(0, n[0]*LIGHT[0] + n[1]*LIGHT[1] + n[2]*LIGHT[2]);
   const nh = Math.max(0, n[0]*HALF[0] + n[1]*HALF[1] + n[2]*HALF[2]);
@@ -70,7 +94,7 @@ function shade(hit, mat) {
   const nr = Math.max(0, n[0]*RIM[0] + n[1]*RIM[1] + n[2]*RIM[2]);
   const nr2 = Math.max(0, n[0]*RIM2[0] + n[1]*RIM2[1] + n[2]*RIM2[2]);
   const rm = (Math.pow(nr, 1.6) + Math.pow(nr2, 1.8) * 0.62) * (mat.rim || 0);
-  return clamp(1 - (mat.alb * (AMB + DIF * nd) + sp * 0.85 + rm), 0, 1);
+  return clamp(mat.alb * (AMB + DIF * nd) + sp * 0.85 + rm, 0, 1);
 }
 
 /* ---- primitives ------------------------------------------------------ */
@@ -79,7 +103,7 @@ function capsule(p0, p1, r0, r1, mat, o) {
   const ax = sub(p1, p0), L2 = ax[0]*ax[0] + ax[1]*ax[1];
   const rm = Math.max(r0, r1);
   return {
-    mat, outline: o.outline !== false,
+    mat,
     bbox: [Math.min(p0[0],p1[0])-rm, Math.min(p0[1],p1[1])-rm, Math.max(p0[0],p1[0])+rm, Math.max(p0[1],p1[1])+rm],
     test(p) {
       let t = L2 > 1e-9 ? ((p[0]-p0[0])*ax[0] + (p[1]-p0[1])*ax[1]) / L2 : 0;
@@ -100,7 +124,7 @@ function ell(c, rx, ry, rotDeg, mat, o) {
   const ct = Math.cos(rotDeg*D2R), st = Math.sin(rotDeg*D2R);
   const R = Math.max(rx, ry);
   return {
-    mat, outline: o.outline !== false, soft: !!o.soft,
+    mat, soft: !!o.soft,
     bbox: [c[0]-R, c[1]-R, c[0]+R, c[1]+R],
     test(p) {
       const dx = p[0]-c[0], dy = p[1]-c[1];
@@ -119,7 +143,7 @@ function poly(pts, mat, o) {
   let a = 1e9, b = 1e9, c = -1e9, d = -1e9;
   for (const p of pts) { a = Math.min(a,p[0]); c = Math.max(c,p[0]); b = Math.min(b,p[1]); d = Math.max(d,p[1]); }
   return {
-    mat, outline: o.outline !== false,
+    mat,
     bbox: [a, b, c, d],
     test(p) {
       let inside = false, best = 1e9, bn = [0,1];
@@ -146,7 +170,7 @@ function uni(parts, mat, o) {
   let a = 1e9, b = 1e9, c = -1e9, d = -1e9;
   for (const p of parts) { a = Math.min(a, p.bbox[0]); b = Math.min(b, p.bbox[1]); c = Math.max(c, p.bbox[2]); d = Math.max(d, p.bbox[3]); }
   return {
-    mat: mat || parts[0].mat, outline: o.outline !== false, bbox: [a, b, c, d],
+    mat: mat || parts[0].mat, bbox: [a, b, c, d],
     test(p) {
       let best = null;
       for (const q of parts) {
@@ -161,7 +185,7 @@ function uni(parts, mat, o) {
 }
 
 const softBlob = (c, rx, ry, tone, rotDeg) => {
-  const e = ell(c, rx, ry, rotDeg || 0, { tone, flat: true }, { outline: false, soft: true });
+  const e = ell(c, rx, ry, rotDeg || 0, { tone, flat: true }, { soft: true });
   e.softTone = tone; return e;
 };
 
@@ -223,7 +247,7 @@ function legParts(S, side, P) {
   const calfD = nrm(sub(knee, ank));
   o.push(uni([capsule(ank, add(ank, mul(calfD, 0.140)), 0.084*k, 0.076*k, MAT.boot),
               capsule(heel, toe, 0.058*k, 0.044*k, MAT.boot)], MAT.boot));
-  o.push(capsule(add(low, mul(fwd, -0.042)), add(low, mul(fwd, 0.120)), 0.022, 0.017, MAT.ink2, { outline:false })); // sole line
+  o.push(capsule(add(low, mul(fwd, -0.042)), add(low, mul(fwd, 0.120)), 0.022, 0.017, MAT.ink2)); // sole line
   return o;
 }
 
@@ -243,7 +267,7 @@ function armParts(S, side, P) {
              : fistStyle === 'open' ? ell(add(wri, mul(fd, 0.050)), 0.042*k, 0.060*k, Math.atan2(fd[1], fd[0])*180/Math.PI - 90, MAT.skin)
              : ell(add(wri, mul(fd, 0.034)), 0.044*k, 0.042*k, 0, MAT.skin);
   o.push(uni([capsule(lerpP(elb, wri, 0.34), wri, 0.050*k, 0.040*k, MAT.skin), hand], MAT.skin));
-  if (fistStyle === 'fist') o.push(capsule(add(wri, mul(fd, 0.055)), add(wri, mul(fd, 0.070)), 0.032, 0.028, MAT.skinDark, { outline:false }));
+  if (fistStyle === 'fist') o.push(capsule(add(wri, mul(fd, 0.055)), add(wri, mul(fd, 0.070)), 0.032, 0.028, MAT.skinDark));
   return o;
 }
 
@@ -257,9 +281,9 @@ function torsoParts(S, P) {
   // bare chest / torn tee behind the open jacket
   const ch = add(S.chest, mul(sd, -0.085));
   o.push(ell(ch, 0.100, 0.175, Math.atan2(sd[0], sd[1]) * -180/Math.PI, MAT.skin));
-  o.push(ell(add(add(ch, mul(pp, 0.046)), mul(sd, 0.078)), 0.044, 0.030, 0, MAT.skinDark, { outline:false }));
-  o.push(ell(add(add(ch, mul(pp,-0.046)), mul(sd, 0.078)), 0.044, 0.030, 0, MAT.skinDark, { outline:false }));
-  o.push(capsule(add(ch, mul(sd, 0.05)), add(ch, mul(sd, -0.09)), 0.007, 0.006, MAT.ink2, { outline:false }));
+  o.push(ell(add(add(ch, mul(pp, 0.046)), mul(sd, 0.078)), 0.044, 0.030, 0, MAT.skinDark));
+  o.push(ell(add(add(ch, mul(pp,-0.046)), mul(sd, 0.078)), 0.044, 0.030, 0, MAT.skinDark));
+  o.push(capsule(add(ch, mul(sd, 0.05)), add(ch, mul(sd, -0.09)), 0.007, 0.006, MAT.ink2));
   o.push(poly([add(add(ch, mul(pp,-0.082)), mul(sd,-0.10)), add(add(ch, mul(pp, 0.082)), mul(sd,-0.12)),
                add(add(ch, mul(pp, 0.090)), mul(sd,-0.26)), add(add(ch, mul(pp,-0.090)), mul(sd,-0.26))],
               MAT.tee, { bulge: 0.045 }));
@@ -280,18 +304,18 @@ function torsoParts(S, P) {
   o.push(poly([add(S.neck, mul(pp, 0.045)), add(add(S.neck, mul(pp, 0.16)), mul(sd,0.055)),
                add(add(S.neck, mul(pp, 0.10)), mul(sd,0.135)), add(add(S.neck, mul(pp, 0.02)), mul(sd,0.07))], MAT.leatherHi, { bulge:0.035 }));
   // zip + seams
-  o.push(capsule(lerpP(innerTopR, innerLowR, 0.12), lerpP(innerTopR, innerLowR, 0.95), 0.009, 0.009, MAT.ink, { outline:false }));
-  o.push(capsule(add(outL, mul(sd,-0.02)), add(wL, mul(pp,0.02)), 0.007, 0.007, MAT.ink, { outline:false }));
+  o.push(capsule(lerpP(innerTopR, innerLowR, 0.12), lerpP(innerTopR, innerLowR, 0.95), 0.009, 0.009, MAT.ink));
+  o.push(capsule(add(outL, mul(sd,-0.02)), add(wL, mul(pp,0.02)), 0.007, 0.007, MAT.ink));
   // studs
   for (let i = 0; i < 4; i++) {
     const t = 0.18 + i*0.2;
-    o.push(ell(lerpP(add(outL, mul(sd,-0.055)), add(innerTopL, mul(sd,-0.06)), t), 0.014, 0.013, 0, MAT.metal, { outline:false }));
-    o.push(ell(lerpP(add(outR, mul(sd,-0.055)), add(innerTopR, mul(sd,-0.06)), t), 0.014, 0.013, 0, MAT.metal, { outline:false }));
+    o.push(ell(lerpP(add(outL, mul(sd,-0.055)), add(innerTopL, mul(sd,-0.06)), t), 0.014, 0.013, 0, MAT.metal));
+    o.push(ell(lerpP(add(outR, mul(sd,-0.055)), add(innerTopR, mul(sd,-0.06)), t), 0.014, 0.013, 0, MAT.metal));
   }
   // belt
   const bL = add(wL, mul(sd, -0.035)), bR = add(wR, mul(sd, -0.035));
   o.push(capsule(bL, bR, 0.040, 0.040, MAT.belt));
-  for (let i = 0; i < 5; i++) o.push(ell(lerpP(bL, bR, 0.14 + i*0.18), 0.015, 0.014, 0, MAT.metal, { outline:false }));
+  for (let i = 0; i < 5; i++) o.push(ell(lerpP(bL, bR, 0.14 + i*0.18), 0.015, 0.014, 0, MAT.metal));
   o.push(ell(lerpP(bL, bR, 0.52), 0.036, 0.030, 0, MAT.metal));
   return o;
 }
@@ -304,7 +328,7 @@ function headParts(S, P) {
   const hd = S.hd, hp = [hd[1], -hd[0]];
   const ang = Math.atan2(hd[0], hd[1]) * -180 / Math.PI;
   const turn = P.headTurn || 0;
-  o.push(capsule(S.neck, add(S.neck, mul(hd, 0.09)), 0.048, 0.045, MAT.skin, { outline:false }));
+  o.push(capsule(S.neck, add(S.neck, mul(hd, 0.09)), 0.048, 0.045, MAT.skin));
   const crown = add(S.headC, mul(hd, 0.072));
   const flick = P.hairFlick || 0;
   const back = [ell(crown, 0.096, 0.083, ang, MAT.hair)];
@@ -322,19 +346,19 @@ function headParts(S, P) {
               capsule(add(add(S.headC, mul(hp,-0.088)), mul(hd, 0.050)), add(add(S.headC, mul(hp,-0.079)), mul(hd,-0.056)), 0.022, 0.011, MAT.hair),
               capsule(add(add(S.headC, mul(hp, 0.088)), mul(hd, 0.050)), add(add(S.headC, mul(hp, 0.081)), mul(hd,-0.048)), 0.022, 0.011, MAT.hair)],
              MAT.hair));   // fringe + sideburns frame the face
-  o.push(ell(add(add(S.headC, mul(hd,-0.040)), mul(hp, -0.058 + turn*0.0011)), 0.026, 0.046, ang, MAT.skinDark, { outline:false })); // cheek
+  o.push(ell(add(add(S.headC, mul(hd,-0.040)), mul(hp, -0.058 + turn*0.0011)), 0.026, 0.046, ang, MAT.skinDark)); // cheek
   // features
   const tx = turn * 0.0015;
   const F = (u, v) => add(add(S.headC, mul(hp, u + tx)), mul(hd, v));
-  o.push(capsule(F(-0.070, 0.052), F(-0.016, 0.034), 0.013, 0.010, MAT.ink, { outline:false }));    // brows, sneering inward
-  o.push(capsule(F( 0.070, 0.052), F( 0.016, 0.034), 0.013, 0.010, MAT.ink, { outline:false }));
-  o.push(ell(F(-0.042, 0.012), 0.026, 0.0165, ang + 7, MAT.ink, { outline:false }));                 // eyes
-  o.push(ell(F( 0.042, 0.012), 0.026, 0.0165, ang - 7, MAT.ink, { outline:false }));
-  o.push(capsule(F(0.006,-0.006), F(0.012,-0.030), 0.009, 0.013, MAT.skinDark, { outline:false }));   // nose
+  o.push(capsule(F(-0.070, 0.052), F(-0.016, 0.034), 0.013, 0.010, MAT.ink));    // brows, sneering inward
+  o.push(capsule(F( 0.070, 0.052), F( 0.016, 0.034), 0.013, 0.010, MAT.ink));
+  o.push(ell(F(-0.042, 0.012), 0.026, 0.0165, ang + 7, MAT.ink));                 // eyes
+  o.push(ell(F( 0.042, 0.012), 0.026, 0.0165, ang - 7, MAT.ink));
+  o.push(capsule(F(0.006,-0.006), F(0.012,-0.030), 0.009, 0.013, MAT.skinDark));   // nose
   const mouth = F(0.006, -0.062);
   const open = P.mouth || 0;
-  o.push(ell(mouth, 0.031, 0.0135 + open*0.028, ang - 12, MAT.ink, { outline:false }));
-  o.push(ell(add(mouth, mul(hd,-0.026)), 0.020, 0.010, ang, MAT.skinDark, { outline:false }));        // chin shadow
+  o.push(ell(mouth, 0.031, 0.0135 + open*0.028, ang - 12, MAT.ink));
+  o.push(ell(add(mouth, mul(hd,-0.026)), 0.020, 0.010, ang, MAT.skinDark));        // chin shadow
   return o;
 }
 
@@ -347,15 +371,15 @@ function propParts(S, P) {
     const b = add(w, mul(d, 0.02)), t = add(w, mul(d, 0.17));
     o.push(capsule(b, t, 0.030, 0.032, MAT.mic));
     o.push(ell(add(w, mul(d, 0.21)), 0.046, 0.046, 0, MAT.mic));
-    o.push(capsule(b, add(w, mul(d, -0.13)), 0.008, 0.006, MAT.ink2, { outline:false }));
+    o.push(capsule(b, add(w, mul(d, -0.13)), 0.008, 0.006, MAT.ink2));
   }
   if (P.cig) {
     const hd = S.hd, hp = [hd[1], -hd[0]];
     const a = P.cig === 'mouth' ? add(add(S.headC, mul(hd, -0.060)), mul(hp, 0.030))
             : add(P.cig === 'L' ? S.wriL : S.wriR, mul(nrm(sub(P.cig === 'L' ? S.wriL : S.wriR, P.cig === 'L' ? S.elbL : S.elbR)), 0.055));
     const b = add(a, mul(nrm(P.cigDir || [1, 0.25]), 0.080));
-    o.push(capsule(a, b, 0.011, 0.010, { tone: 0.12, shin: 0.1, spec: 6 }));
-    o.push(ell(b, 0.013, 0.012, 0, MAT.ink, { outline: false }));
+    o.push(capsule(a, b, 0.011, 0.010, { tone: 0.12, flat: true }));
+    o.push(ell(b, 0.013, 0.012, 0, MAT.ink));
     if (P.smoke) {
       const o0 = add(b, [0.01, 0.03]);
       for (let i = 0; i < P.smoke; i++) {
@@ -365,11 +389,25 @@ function propParts(S, P) {
     }
   }
   if (P.bottle) {
+    /* A pint, built along world up rather than along the forearm: the old
+       bottle pointed wherever the arm did, so in beer_swig he drank from the
+       base. Four walls and three fills. The seam between beer and foam is the
+       part that matters: at this cell size a boundary inside about fifteen of
+       the seventy ramp steps disappears into the shading, so the two are set
+       far apart and cut with a near-black line rather than blended. */
     const w = P.bottle === 'L' ? S.wriL : S.wriR, d = handDir(P.bottle);
-    const b = add(w, mul(d, -0.03)), t = add(w, mul(d, 0.135));
-    o.push(capsule(b, t, 0.050, 0.048, MAT.glass));
-    o.push(capsule(t, add(w, mul(d, 0.245)), 0.024, 0.020, MAT.glass));
-    o.push(capsule(add(b, mul(d,0.02)), add(b, mul(d,0.085)), 0.044, 0.044, MAT.ink2, { outline:false })); // label
+    const x = w[0] + (d[0] >= 0 ? 0.022 : -0.022), y = w[1];   // clear of the hip
+    const IW = 0.034;                                          // inside half-width
+    const floor = y - 0.040, brim = y + 0.098;
+    const head = brim - 0.24 * (brim - floor), pour = head - 0.007;
+    const band = (lo, hi, mat) => poly([[x-IW,lo],[x+IW,lo],[x+IW,hi],[x-IW,hi]], mat, { bulge: 0.012 });
+    /* Back to front, like the rest: the walls, then what is in them, and the
+       cut last of all so the boundary between beer and foam stays hard. */
+    o.push(ell([x, floor - 0.006], 0.052, 0.009, 0, MAT.pint));          // base
+    o.push(capsule([x, floor], [x, brim], 0.048, 0.052, MAT.pint));      // walls
+    o.push(band(floor, pour, MAT.beer));                                 // beer
+    o.push(band(head, brim, MAT.foam));                                  // head
+    o.push(band(pour, head, MAT.seam));                                  // the cut
   }
   if (P.can) {
     const w = P.can === 'L' ? S.wriL : S.wriR, d = handDir(P.can);
@@ -382,7 +420,7 @@ function propParts(S, P) {
     o.push(capsule(add(c,[-0.11,0.01]), add(c,[-0.02,-0.02]), 0.036, 0.030, MAT.plastic));
     o.push(capsule(add(c,[ 0.11,0.01]), add(c,[ 0.02,-0.02]), 0.036, 0.030, MAT.plastic));
     o.push(capsule(add(c,[0,0.01]), add(c,[0,-0.09]), 0.034, 0.028, MAT.plastic));
-    o.push(ell(add(c,[0,0.015]), 0.022, 0.020, 0, MAT.ink2, { outline:false }));
+    o.push(ell(add(c,[0,0.015]), 0.022, 0.020, 0, MAT.ink2));
   }
   (P.extra || []).forEach(f => f(o, S, P));
   return o;
@@ -401,11 +439,21 @@ function buildParts(P) {
   const S = skeleton(P);
   const back = [], front = [];
   const bl = P.frontLeg === 'R' ? 'L' : 'R', ba = P.frontArm === 'R' ? 'L' : 'R';
+  /* The rasteriser reverses this list, so it is built back to front: what is
+     pushed last is drawn in front. The contact line goes first, under his
+     boots; the props go last, in the hand and in front of it. */
   const o = [];
   if (P.shadow) {
+    /* Where he meets the floor, as one thin bright line. A soft pool under the
+       boots reads as a smear of noise on a projector, and a dark one cannot be
+       seen at all on black. It thins and dims as he leaves the ground. */
     const cx = (S.ankL[0] + S.ankR[0]) / 2;
     const lift = clamp(1 - Math.max(0, Math.min(S.ankL[1], S.ankR[1]) - 0.115) * 2.2, 0.35, 1);
-    o.push(softBlob([cx, 0.012], 0.44 * lift, 0.055 * lift, 0.13 * lift));
+    /* The floor stays where it is: a standing ankle sits at 0.115 and the sole
+       0.055 under it, so that is the height of the line whether he is on it or
+       over it. Leaving the ground only thins and dims it. */
+    o.push(ell([cx, 0.060], 0.26 * lift, 0.006, 0,
+               { tone: 0.10 + 0.5 * (1 - lift), flat: true }));
   }
   (P.behind || []).forEach(f => f(o, S, P));
   o.push(...legParts(S, bl, P));
@@ -441,9 +489,9 @@ function rasterise(parts) {
             if (x < bb[0] || x > bb[2] || y < bb[1] || y > bb[3]) continue;
             const h = pt.test([x, y]);
             if (!h) continue;
+            /* No ink outline: on black the rim lights do the separating, and
+               they were built for it — leather 0.40, belt 0.42, boot 0.38. */
             v = shade(h, pt.mat);
-            if (pt.outline && h.din < OUTLINE_W && (pt.mat.alb == null || pt.mat.alb > OUTLINE_ALB))
-              v = Math.max(v, OUTLINE_TONE);
             done = true; break;
           }
           if (!done) {
@@ -578,10 +626,10 @@ const POSES = {
          behind: [(o) => {
            o.push(poly([[-0.80,0.055],[-0.46,0.055],[-0.46,0.415],[-0.80,0.415]], MAT.leather, { bulge:0.038 }));
            o.push(poly([[-0.772,0.125],[-0.488,0.125],[-0.488,0.360],[-0.772,0.360]], MAT.glow, { bulge:0.022 }));
-           for (let i = 0; i < 5; i++) o.push(capsule([-0.770, 0.140 + i*0.052], [-0.490, 0.140 + i*0.052], 0.007, 0.007, MAT.ink2, { outline:false }));
-           o.push(capsule([-0.760,0.090],[-0.640,0.090], 0.013, 0.013, MAT.ink2, { outline:false }));
-           o.push(capsule([-0.46,0.170],[-0.24,0.075], 0.009, 0.008, MAT.ink2, { outline:false }));
-           o.push(capsule([-0.24,0.075],[-0.045,0.440], 0.009, 0.008, MAT.ink2, { outline:false }));
+           for (let i = 0; i < 5; i++) o.push(capsule([-0.770, 0.140 + i*0.052], [-0.490, 0.140 + i*0.052], 0.007, 0.007, MAT.ink2));
+           o.push(capsule([-0.760,0.090],[-0.640,0.090], 0.013, 0.013, MAT.ink2));
+           o.push(capsule([-0.46,0.170],[-0.24,0.075], 0.009, 0.008, MAT.ink2));
+           o.push(capsule([-0.24,0.075],[-0.045,0.440], 0.009, 0.008, MAT.ink2));
            o.push(softBlob([-0.12,0.048], 0.58, 0.044, 0.16));
          }] },
 
@@ -591,11 +639,11 @@ const POSES = {
               fistL:'pinch', fistR:'fist', frontLeg:'L', frontArm:'R', hairFlick:-5,
               behind: [(o) => {
                 o.push(poly([[0.44,0.02],[0.89,0.02],[0.89,0.76],[0.44,0.76]], MAT.leather, { bulge:0.042 }));
-                o.push(capsule([0.45,0.735],[0.88,0.735], 0.016, 0.016, MAT.metal, { outline:false }));
+                o.push(capsule([0.45,0.735],[0.88,0.735], 0.016, 0.016, MAT.metal));
                 o.push(poly([[0.485,0.095],[0.850,0.095],[0.850,0.655],[0.485,0.655]], MAT.leatherHi, { bulge:0.03 }));
                 o.push(ell([0.667,0.375], 0.150, 0.205, 0, MAT.jeans));
-                o.push(ell([0.667,0.375], 0.046, 0.060, 0, MAT.metal, { outline:false }));
-                for (let i = 0; i < 4; i++) o.push(ell([0.462 + (i%2)*0.410, 0.055 + Math.floor(i/2)*0.660], 0.014, 0.013, 0, MAT.metal, { outline:false }));
+                o.push(ell([0.667,0.375], 0.046, 0.060, 0, MAT.metal));
+                for (let i = 0; i < 4; i++) o.push(ell([0.462 + (i%2)*0.410, 0.055 + Math.floor(i/2)*0.660], 0.014, 0.013, 0, MAT.metal));
               }] },
 };
 
@@ -617,4 +665,6 @@ const LOOPS = {
   backstage: ['amp_lean','hairspray','lace_boot','tune_up'],
 };
 
-return { COLS, ROWS, RAMP, POSES, LOOPS, renderPose, MAT, BASE, skeleton, CELL_W, CELL_H, X0, Y_TOP };
+/* What render.mjs and the art tests need, and nothing else: the rest was for
+   the viewer pages of the project this generator was drawn in. */
+return { COLS, ROWS, RAMP, POSES, LOOPS, renderPose };

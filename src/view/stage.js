@@ -101,6 +101,16 @@ export class Stage {
      */
     this.showing = '';
     /**
+     * Loop currently being performed, so a switch can be noticed.
+     * @type {string}
+     */
+    this.performing = '';
+    /**
+     * When the current loop began, in milliseconds since the page started.
+     * @type {number}
+     */
+    this.openedMs = 0;
+    /**
      * Size of one character cell at {@link PROBE_PX}, or `null` before it is measured.
      * @type {{width: number, height: number} | null}
      */
@@ -163,7 +173,15 @@ export class Stage {
    */
   draw({ loop, elapsedMs, danceBpm, dancing, breakFrameMs }) {
     const frameMs = dancing ? 60000 / danceBpm / FRAMES_PER_BEAT : breakFrameMs;
-    const name = frameAt(loop, elapsedMs, frameMs);
+    // A scene opens on its own first frame. Indexed by the absolute clock, a
+    // four-frame break would open wherever the page happened to be in its
+    // cycle: backstage on lace_boot rather than amp_lean, a dance on its
+    // weakest beat.
+    if (loop !== this.performing) {
+      this.performing = loop;
+      this.openedMs = elapsedMs;
+    }
+    const name = frameAt(loop, elapsedMs - this.openedMs, frameMs);
     if (name !== this.showing) {
       this.element.textContent = frameText(name);
       this.showing = name;

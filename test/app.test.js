@@ -110,16 +110,17 @@ describe('app', () => {
     assert.notEqual(document.elements.stage.style.fontSize, before);
   });
 
-  it('C16: the panel gets out of the way once capture runs, unless debugging', async () => {
-    const plain = setup();
-    boot(plain.env);
-    await click(plain.document);
-    assert.equal(plain.document.elements.panel.hidden, true);
-
-    const debug = setup({ search: '?debug=1' });
-    boot(debug.env);
-    await click(debug.document);
-    assert.equal(debug.document.elements.panel.hidden, false);
+  it('C18: the panel gets out of the way once capture runs, debugging or not', async () => {
+    // Debug mode used to keep the centred panel up, which put a full-width
+    // "music (140 bpm)" across Marcel's chest: exactly where you are looking
+    // while tuning a threshold. The overlay names the state in its first line,
+    // so nothing is lost by clearing the centre.
+    for (const search of ['', '?debug=1']) {
+      const { document, env } = setup({ search });
+      boot(env);
+      await click(document);
+      assert.equal(document.elements.panel.hidden, true, `panel still up with "${search}"`);
+    }
   });
 
   it('C16: what he performs follows what is heard', async () => {

@@ -15,10 +15,10 @@
 */
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { FRAME_META, FRAMES, LOOPS, SHEET } from '../src/sprites/index.js';
 import { frameAt, frameText, Stage } from '../src/view/stage.js';
+import { generator } from './helpers/art.js';
 import { createFakeDocument } from './helpers/fakes.js';
 
 /** The ramp the design project draws with: lightest first, darkest last. */
@@ -51,11 +51,11 @@ describe('sprite sheet', () => {
     }
   });
 
-  it('C16: the repair held: no frame contains the text undefined', () => {
+  it('C16: no frame contains the text undefined', () => {
     for (const [name, rows] of Object.entries(FRAMES)) {
       assert.ok(
         rows.every((row) => !row.includes('undefined')),
-        `${name} still carries the design project's NaN`,
+        `${name} carries a NaN tone`,
       );
     }
   });
@@ -81,20 +81,18 @@ describe('sprite sheet', () => {
     assert.deepEqual([...used].sort(), Object.keys(FRAMES).sort());
   });
 
-  it('C16: the committed art is what the vendored generator draws, frame for frame', () => {
+  it('C16: the committed art is what the generator draws, frame for frame', () => {
     // SPEC D10: the generator is the source, not the exports. Without this,
     // a hand-edited sprite would pass every other check in this file.
-    const source = readFileSync(new URL('../design/gen.js', import.meta.url), 'utf8');
-    const repair = [
-      '  if (mat.flat) return mat.tone;',
-      '  if (mat.flat || (mat.alb == null && mat.tone != null)) return mat.tone;',
-    ];
-    assert.ok(source.includes(repair[0]), 'the documented repair no longer applies');
-    const gen = new Function(source.replace(repair[0], repair[1]))();
+    const gen = generator();
     assert.deepEqual(Object.keys(gen.POSES).sort(), Object.keys(FRAMES).sort());
     assert.deepEqual(gen.LOOPS, LOOPS);
     for (const [name, pose] of Object.entries(gen.POSES)) {
-      assert.deepEqual(gen.renderPose(pose), FRAMES[name], `${name} is not what gen.js draws`);
+      assert.deepEqual(
+        gen.renderPose(pose),
+        FRAMES[name],
+        `${name} is not what the generator draws`,
+      );
     }
   });
 
@@ -216,24 +214,28 @@ describe('stage', () => {
   });
 
   it('C16: a between-song scene ignores the tempo and runs at its own rate', () => {
+    // Measured from when the scene opened, not from when the page did: 180 bpm
+    // would be an eighth note every 167 ms, and the scene holds for 2400.
     const { stage } = setup();
-    const slow = stage.draw({
-      loop: 'smoke',
-      elapsedMs: 2399,
-      danceBpm: 180,
-      dancing: false,
-      breakFrameMs: 2400,
-    });
-    assert.equal(slow, 'smoke_drag');
+    const moment = { loop: 'smoke', danceBpm: 180, dancing: false, breakFrameMs: 2400 };
+    assert.equal(stage.draw({ ...moment, elapsedMs: 900 }), 'smoke_drag', 'the scene opens');
+    assert.equal(stage.draw({ ...moment, elapsedMs: 900 + 2399 }), 'smoke_drag', 'and holds');
+    assert.equal(stage.draw({ ...moment, elapsedMs: 900 + 2400 }), 'smoke_exhale');
+  });
+
+  it('C18: a scene opens on its first frame, however long the page has been up', () => {
+    // The loop used to be indexed by absolute time since the page loaded, so a
+    // four-frame break could open on lace_boot instead of amp_lean and a dance
+    // could start on its weakest beat.
+    const { stage } = setup();
+    const moment = { danceBpm: 180, dancing: false, breakFrameMs: 2400 };
+    stage.draw({ loop: 'smoke', elapsedMs: 0, ...moment });
+    const opened = stage.draw({ loop: 'backstage', elapsedMs: 7300, ...moment });
+    assert.equal(opened, LOOPS.backstage[0], 'the scene opened part way through itself');
+    // And it still runs from there, rather than snapping back to the clock.
     assert.equal(
-      stage.draw({
-        loop: 'smoke',
-        elapsedMs: 2400,
-        danceBpm: 180,
-        dancing: false,
-        breakFrameMs: 2400,
-      }),
-      'smoke_exhale',
+      stage.draw({ loop: 'backstage', elapsedMs: 7300 + 2400, ...moment }),
+      LOOPS.backstage[1],
     );
   });
 });

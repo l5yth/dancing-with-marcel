@@ -126,4 +126,25 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
     assert.ok(frames.size > 1, 'he stood still');
     assert.deepEqual(session.logs, [], 'the console stayed quiet');
   });
+
+  it('C18: the debug text is one block in the corner, on its own ground', async () => {
+    const session = await page({ query: '?debug=1' });
+    const look = await session.evaluate(
+      `(() => {
+         const read = (id) => {
+           const style = getComputedStyle(document.getElementById(id));
+           return { family: style.fontFamily, size: style.fontSize, ground: style.backgroundColor };
+         };
+         return { overlay: read('overlay'), repo: read('repo') };
+       })()`,
+    );
+    // The repository link is debug information too, so it is set like the rest
+    // of it rather than in the body font at whatever size a link inherits.
+    assert.equal(look.repo.family, look.overlay.family, 'the link is in another font');
+    assert.equal(look.repo.size, look.overlay.size, 'the link is at another size');
+    // Both lie over the art, so both need a ground of their own to stay legible.
+    for (const [name, part] of Object.entries(look)) {
+      assert.equal(part.ground, 'rgb(0, 0, 0)', `${name} is transparent over the figure`);
+    }
+  });
 });

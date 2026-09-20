@@ -15,10 +15,11 @@
 */
 
 /**
- * @file Renders the sprite modules under `src/sprites/` from the design
- * project's generator (SPEC D10). Run it by hand after the design changes:
- * `node design/render.mjs`. The page never loads this, and neither do the
- * tests; only the art it writes ships.
+ * @file Renders the sprite modules under `src/sprites/` from `design/gen.js`
+ * (SPEC D10). Run it by hand after changing the generator:
+ * `node design/render.mjs`. The page never loads this; only the art it writes
+ * ships. A test re-renders the generator and compares every frame, so the
+ * committed sheet cannot drift from its source.
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -27,18 +28,6 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = join(HERE, '..', 'src', 'sprites');
-
-/**
- * The one repair applied to the design project's generator, as a literal
- * replacement so it stays visible. The cigarette material carries a `tone` but
- * no `alb` and is not marked `flat`, so shading multiplies `undefined` and the
- * ramp lookup yields the literal text `undefined` in ten rows of the two smoke
- * frames. See `design/README.md`.
- */
-const REPAIR = [
-  '  if (mat.flat) return mat.tone;',
-  '  if (mat.flat || (mat.alb == null && mat.tone != null)) return mat.tone;',
-];
 
 /** Licence notice every generated module carries. */
 const NOTICE = `/*
@@ -69,17 +58,13 @@ function identifier(name) {
 }
 
 /**
- * Load the design project's generator with the repair applied.
+ * Load the generator. It is the body of a function rather than a module, so it
+ * is evaluated rather than imported.
  *
  * @returns {*} What `gen.js` returns: poses, loops, and `renderPose`.
- * @throws {Error} When the repair no longer matches, so a silent NaN cannot return.
  */
 function loadGenerator() {
-  const source = readFileSync(join(HERE, 'gen.js'), 'utf8');
-  if (!source.includes(REPAIR[0])) {
-    throw new Error('gen.js no longer contains the line the repair replaces');
-  }
-  return new Function(source.replace(REPAIR[0], REPAIR[1]))();
+  return new Function(readFileSync(join(HERE, 'gen.js'), 'utf8'))();
 }
 
 /**

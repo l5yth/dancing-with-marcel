@@ -110,11 +110,16 @@ export function boot(env) {
         overlay.textContent = overlayText(last, config, director.loop);
       }
     },
-    /** Show the panel until capture runs, then get out of Marcel's way. */
+    /**
+     * Show the panel until capture runs, then get out of Marcel's way. Debug
+     * is no exception: the centred label would sit across his chest, which is
+     * where you are looking while tuning a threshold, and the overlay names
+     * the state in its first line anyway.
+     */
     onStatus(status, detail) {
       const running = status === 'running';
       start.hidden = status === 'starting' || running;
-      panel.hidden = running && !debug;
+      panel.hidden = running;
       if (!running) {
         label.textContent = statusText(status, detail);
       } else if (last === null) {

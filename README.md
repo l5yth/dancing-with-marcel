@@ -73,11 +73,9 @@ npm run eval -- song.mp3 other.mp3 --gap 6
 
 ## Art
 
-The sprites come from the design project **ASCII punk dance sprites**. To
-regenerate `src/sprites/` after changing it:
+`design/gen.js` draws the sprites. `src/sprites/` is generated from it and is
+not edited by hand. After changing the generator:
 
 ```
 node design/render.mjs
 ```
-
-See `design/README.md`.
