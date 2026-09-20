@@ -40,10 +40,13 @@ const PARAMS = {
   minOnsets: { default: 4, min: 1, max: 200 },
   /**
    * How far the audible level must spread over the timbre window, from its
-   * 10th to its 90th percentile, in dB. Music moves and a machine does not: a
-   * fridge measures 0.00, and the calmest twentieth of the calmest record
-   * measured 0.60. It is a spread and not a level, so it needs no setting for
-   * the room or the microphone.
+   * 10th to its 90th percentile, in dB, before he starts dancing; a third of
+   * it keeps him dancing. Music moves and a machine does not: a fridge
+   * measures 0.00, and the calmest twentieth of the reference records 0.4 to
+   * 0.6. It is a spread and not a level, so it needs no setting for the room
+   * or the microphone. A record through a hard limiter moves about 0.25 and
+   * is slow to start; lower this if the PA is limited. 0 switches the
+   * question off.
    */
   minLevelSwingDb: { default: 0.3, min: 0, max: 20 },
   /** How far back tonality and bass are read, in milliseconds. */

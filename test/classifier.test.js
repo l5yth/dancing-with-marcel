@@ -32,9 +32,11 @@ import {
   dense,
   drums,
   hum,
+  limited,
   phoneInRoom,
   quietRoom,
   room,
+  scaleToDb,
   silence,
   speech,
 } from './helpers/synth.js';
@@ -105,6 +107,32 @@ function lively(ms) {
   };
 }
 
+describe('a stop inside a song', () => {
+  for (const [name, make, gap] of [
+    ['drums at 120', (/** @type {number} */ s) => drums(120, s, RATE), 1.5],
+    ['drums over a guitar bed at 180', (/** @type {number} */ s) => dense(180, s, RATE), 1.9],
+    ['a band at 170', (/** @type {number} */ s) => band(170, s, RATE), 1.9],
+  ]) {
+    it(`C7: a stop of ${gap} s in ${name} is not a break`, () => {
+      // Shorter than breakHoldMs, so SPEC D2 says he keeps dancing. The fourth
+      // question broke that: it reads nothing until half its window is
+      // audible again, which kept the answer at no for 0.7 s after the band
+      // came back, and a stop of 1.5 s ended in a break 0.35 s into the music.
+      // While a song is playing, a window too empty to read is not evidence
+      // of stillness.
+      assert.ok(gap * 1000 < DEFAULTS.breakHoldMs);
+      const audio = make(30);
+      audio.fill(0, 15 * RATE, Math.round((15 + gap) * RATE));
+      const { changes } = run(concat(leadIn(), audio));
+      assert.deepEqual(
+        changes.map((event) => event.state),
+        ['music'],
+        changes.map((event) => `${event.state} at ${event.time.toFixed(2)} s`).join(', '),
+      );
+    });
+  }
+});
+
 describe('a calm room', () => {
   it('C20: a hum in a quiet room is not music, however far the floor has sunk', () => {
     // In a calm flat the learned floor sinks to its clamp, and then anything
@@ -120,12 +148,12 @@ describe('a calm room', () => {
     );
     // A sound that starts is not a sound that moves: the two hops straddling
     // its onset must not hold the swing over the bar for long enough to count.
-    const lively = events.filter(
+    const moving = events.filter(
       (event) => event.time > 20 && event.swing >= DEFAULTS.minLevelSwingDb,
     );
     assert.ok(
-      lively.length * (512 / RATE) * 1000 < DEFAULTS.musicEnterMs / 2,
-      `the onset of the hum read as movement for ${lively.length} hops`,
+      moving.length * (512 / RATE) * 1000 < DEFAULTS.musicEnterMs / 2,
+      `the onset of the hum read as movement for ${moving.length} hops`,
     );
     // And the floor goes and meets it, instead of sitting at its clamp.
     const last = /** @type {PipelineEvent} */ (events.at(-1));
@@ -162,23 +190,107 @@ describe('a calm room', () => {
     );
   });
 
-  it('C20: the floor keeps learning until a song has actually begun', () => {
-    // It used to stop the moment the audio looked like music, before the call
-    // had held for musicEnterMs. A wrong first impression then froze the very
-    // evidence that would have overturned it: across twenty seconds of hum the
-    // floor sat at its clamp instead of climbing to meet the sound.
+  it('C20: a sound that has only just started never looks like music', () => {
+    // The benefit of the doubt belongs to a song already playing. At the door
+    // it would be the hum's way in: for the first half window after any sound
+    // starts there is nothing to read a spread from, and a steady one answers
+    // yes to everything else.
+    const classifier = new Classifier(DEFAULTS);
+    for (let ms = 0; ms < 5000; ms += 10) {
+      classifier.update(
+        { time: ms / 1000, levelDb: -20, flux: 1, flatness: 0.2, bass: 0.5, tempo: null },
+        10,
+      );
+      assert.equal(classifier.musicLike, false, `looked like music ${ms} ms after it started`);
+    }
+    assert.equal(classifier.state, 'break');
+  });
+
+  it('C20: the floor holds still from the moment the audio looks like music', () => {
+    // Tried the other way on 2026-09-20 and withdrawn the same day: a floor that
+    // kept learning until the state turned chased every song through its own
+    // entry and lifted the bar out from under the quiet ones. With four
+    // questions, all of them saying yes is evidence enough to stop learning.
     // A long entry time, so there is room to look like music for seconds
     // without being declared music.
     const classifier = new Classifier(Object.freeze({ ...DEFAULTS, musicEnterMs: 60000 }));
-    for (let ms = 0; ms < 4000; ms += 10) {
+    let ms = 0;
+    for (; !classifier.musicLike; ms += 10) {
+      assert.ok(ms < 4000, 'the fixture never came to look like music');
       classifier.update(lively(ms), 10);
     }
-    assert.equal(classifier.musicLike, true, 'the fixture has to look like music');
-    assert.equal(classifier.state, 'break', 'and must not have been declared music yet');
+    const held = classifier.floorDb;
+    for (const until = ms + 4000; ms < until; ms += 10) {
+      classifier.update(lively(ms), 10);
+      assert.equal(classifier.musicLike, true, 'the fixture stopped looking like music');
+    }
+    assert.equal(classifier.state, 'break', 'not declared music, only looking like it');
+    assert.equal(classifier.floorDb, held, 'the floor climbed under audio that looked like music');
+  });
+
+  it('C20: a quiet song is heard', () => {
+    // What the withdrawn rule cost, as a fixture: a band ten decibels over the
+    // room. The floor climbed 3 dB/s for the 1.75 s it takes to be sure of a
+    // song, the bar rose with it, and the song never got over it: 0% music.
+    const bed = room(70, RATE);
+    const song = scaleToDb(band(140, 50, RATE), -50);
+    const from = 10 * RATE;
+    for (let index = 0; index < song.length; index += 1) {
+      bed[from + index] += song[index];
+    }
+    const { events, changes } = run(bed);
+    const entered = changes.find((event) => event.state === 'music');
+    assert.ok(entered !== undefined, 'the quiet song was never heard');
     assert.ok(
-      classifier.floorDb > FLOOR_START_DB,
-      `the floor sat at ${classifier.floorDb} while the call was only provisional`,
+      entered.time <= 10 + (DEFAULTS.musicEnterMs + 4000) / 1000,
+      `heard at ${entered.time} s`,
     );
+    const during = events.filter((event) => event.time > entered.time && event.time < 59);
+    assert.ok(
+      during.every((event) => event.state === 'music'),
+      'and then dropped',
+    );
+  });
+
+  it('C20: a record through a limiter is not dropped in the middle', () => {
+    // Staying needs a third of the movement entering did, like the two level
+    // thresholds. A limiter leaves about a quarter of a decibel of it, which
+    // hovers around the entry bar: with one bar for both, this fixture was
+    // dropped twice in forty seconds.
+    const { events, changes } = run(concat(leadIn(), limited(band(180, 40, RATE), 1)));
+    const entered = changes.find((event) => event.state === 'music');
+    assert.ok(entered !== undefined, 'never became music');
+    assert.ok(
+      entered.time <= LEAD + (DEFAULTS.musicEnterMs + 4000) / 1000,
+      `entered at ${entered.time} s`,
+    );
+    assert.deepEqual(
+      changes
+        .filter((event) => event.state === 'break')
+        .map((event) => `break at ${event.time.toFixed(1)} s`),
+      [],
+    );
+    assert.equal(events.at(-1)?.state, 'music');
+  });
+
+  it('C20: a fridge that starts during a song does not keep him dancing after it', () => {
+    // The fourth question is asked while dancing too, and this is why: asked
+    // only at the door, he danced to the fridge for as long as it hummed.
+    const song = concat(quietRoom(10, RATE), band(140, 30, RATE), silence(40, RATE));
+    const fridge = hum(60, RATE);
+    const bed = quietRoom(80, RATE);
+    for (let index = 0; index < song.length; index += 1) {
+      song[index] += bed[index] + (index >= 20 * RATE ? fridge[index - 20 * RATE] : 0);
+    }
+    const { changes } = run(song);
+    const left = changes.find((event) => event.state === 'break');
+    const budget = (DEFAULTS.breakHoldMs + DEFAULTS.timbreWindowMs + 1000) / 1000;
+    assert.ok(left !== undefined, 'he is still dancing to the fridge');
+    assert.ok(
+      left.time > 40 && left.time <= 40 + budget,
+      `left at ${left.time} s, and the song ended at 40`,
+    );
+    assert.equal(changes.at(-1), left, 'and came back');
   });
 
   it('C20: once a song has begun the floor holds still behind it', () => {
@@ -216,22 +328,29 @@ describe('the tempo of real music', () => {
   }
 
   for (const [id, name, make] of [
-    ['C15', 'room noise', () => room(40, RATE)],
-    ['C15', 'applause-like noise', () => applause(40, RATE)],
-    ['C15', 'speech-like noise', () => speech(40, RATE)],
-    ['C20', 'a hum in a quiet room', () => concat(quietRoom(20, RATE), hum(30, RATE))],
+    ['C15', 'room noise', (/** @type {number} */ rate) => room(40, rate)],
+    ['C15', 'applause-like noise', (/** @type {number} */ rate) => applause(40, rate)],
+    ['C15', 'speech-like noise', (/** @type {number} */ rate) => speech(40, rate)],
+    [
+      'C20',
+      'a hum in a quiet room',
+      (/** @type {number} */ rate) => concat(quietRoom(20, rate), hum(30, rate)),
+    ],
   ]) {
     it(`${id}: ${name} never sets the dance tempo`, () => {
       // What the old threshold was protecting, stated as itself. Noise is
       // allowed to look periodic to the estimator, and speech does, more than
       // some music; it is not allowed to become the tempo he dances at. A
       // tempo only settles inside a music span, and none of these opens one.
-      const { events } = run(make());
-      assert.ok(
-        events.every((event) => !event.locked),
-        'a tempo was locked from noise',
-      );
-      assert.ok(events.every((event) => event.danceBpm === DEFAULTS.defaultBpm));
+      // At both rates, as the criterion says.
+      for (const sampleRate of [48000, 44100]) {
+        const { events } = run(make(sampleRate), { sampleRate });
+        assert.ok(
+          events.every((event) => !event.locked),
+          `a tempo was locked from noise at ${sampleRate} Hz`,
+        );
+        assert.ok(events.every((event) => event.danceBpm === DEFAULTS.defaultBpm));
+      }
     });
   }
 });
@@ -257,7 +376,9 @@ describe('classifier', () => {
       { length: RATE * 20 },
       (_, index) => 0.3 * Math.sin((2 * Math.PI * 1000 * index) / RATE),
     );
-    const { events } = run(concat(leadIn(), tone));
+    // The fourth question would reject a steady tone too, so it is switched
+    // off: with it on, this test would stay green if the pulse question broke.
+    const { events } = run(concat(leadIn(), tone), { config: { minLevelSwingDb: 0 } });
     assert.ok(events.every((event) => event.state === 'break'));
     // It is loud and tonal, so only the missing onsets can be rejecting it.
     const heard = events.filter(
@@ -320,6 +441,24 @@ describe('classifier', () => {
       );
     });
   }
+
+  it('C2: between entering and locking, the label is exactly music', () => {
+    // With the three-second lead-in above, the estimator has its four seconds
+    // of envelope by the time the music is declared, so the tempo is adopted
+    // in the same event and the "exactly music" clause is checked on nothing.
+    // A one-second lead-in leaves a real stretch with no tempo to show.
+    const { events, changes, labels } = run(concat(room(1, RATE), drums(120, 12, RATE)));
+    const entered = changes.find((event) => event.state === 'music');
+    assert.ok(entered !== undefined, 'never became music');
+    const from = events.indexOf(entered);
+    const locked = events.findIndex((event) => event.locked);
+    assert.ok(locked > from + 20, `only ${locked - from} events between entering and locking`);
+    assert.ok(
+      labels.slice(from, locked).every((label) => label === 'music'),
+      'something other than "music" was shown before a tempo was known',
+    );
+    assert.match(labels[locked], /^music \(\d+ bpm\)$/);
+  });
 
   /**
    * Hold a music fixture to everything C2 asks of it: it enters inside the

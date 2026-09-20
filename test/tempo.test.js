@@ -16,6 +16,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { DEFAULTS } from '../src/config.js';
 import { estimateTempo } from '../src/dsp/tempo.js';
 import { mulberry32 } from './helpers/synth.js';
 
@@ -64,7 +65,10 @@ describe('estimateTempo', () => {
     const rand = mulberry32(3);
     const envelope = Float64Array.from({ length: 800 }, () => rand());
     const estimate = estimateTempo(envelope, 100, RANGE);
-    assert.ok(estimate === null || estimate.confidence < 0.3, `${estimate?.confidence}`);
+    assert.ok(
+      estimate === null || estimate.confidence < DEFAULTS.tempoMinConfidence,
+      `${estimate?.confidence}`,
+    );
   });
 
   it('C15: no tempo without variation, without enough data, or without a range', () => {

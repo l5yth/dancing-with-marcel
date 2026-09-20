@@ -181,17 +181,23 @@ describe('pipeline', () => {
   });
 
   it('C9: while dancing the tempo stays a finite number inside the range', () => {
-    const config = parseConfig('?bpmMin=100&bpmMax=180');
+    // The frames hold one level, so the fourth question is switched off; and
+    // the state is asserted, because for a while this test passed without him
+    // ever dancing, on the default tempo of a pipeline that stayed in `break`.
+    const config = parseConfig('?bpmMin=100&bpmMax=180&minLevelSwingDb=0');
     const instance = new Pipeline({ config, sampleRate: RATE });
     for (const bpm of [100, 140, 180]) {
       const event = feed(instance, { levelDb: LOUD, bpm, confidence: 0.9, ms: 4000 });
+      assert.equal(event.state, 'music', 'he has to be dancing for this to mean anything');
+      assert.equal(event.locked, true);
+      assert.ok(Math.abs(event.danceBpm - bpm) < 1, `${event.danceBpm} for ${bpm}`);
       assert.ok(Number.isFinite(event.danceBpm));
       assert.ok(event.danceBpm >= config.bpmMin && event.danceBpm <= config.bpmMax);
     }
   });
 
   it('C9: real audio drives the whole pipeline: break, then music at the played tempo', () => {
-    const instance = pipeline();
+    const instance = new Pipeline({ config: DEFAULTS, sampleRate: RATE });
     const audio = concat(room(3, RATE), drums(160, 20, RATE));
     /** @type {PipelineEvent[]} */
     const events = [];
@@ -213,7 +219,7 @@ describe('pipeline', () => {
      * @returns {PipelineEvent[]} The events.
      */
     const run = (chunk) => {
-      const instance = pipeline();
+      const instance = new Pipeline({ config: DEFAULTS, sampleRate: RATE });
       /** @type {PipelineEvent[]} */
       const events = [];
       for (let offset = 0; offset < audio.length; offset += chunk) {

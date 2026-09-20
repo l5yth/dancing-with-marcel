@@ -32,17 +32,19 @@
  *    is tunable and why the rehearsal is the check that matters (SPEC R2).
  * 3. **Is something happening?** Repeated onsets, or bass. Either is enough, so
  *    a thin track full of strumming and a bass-heavy one both pass, including a
- *    guitar intro before the band comes in. What fails is a sound that just
- *    sits there: a PA hum or a feedback whine is loud and tonal, and only this
- *    question tells it from music. Onsets are counted, not measured, because
- *    one loud attack starts a feedback squeal too.
- *
+ *    guitar intro before the band comes in. Onsets are counted, not measured,
+ *    because one loud attack starts a feedback squeal too. This was meant to be
+ *    what tells a PA hum from music, and it is not: a hum is all bass, and at a
+ *    low level it scores onsets out of its own noise. That is question 4's job.
  * 4. **Does the level move?** The audible level spreads at least
- *    `minLevelSwingDb` over the timbre window, 10th percentile to 90th. In a calm room the floor sinks to
- *    its clamp, and then a fridge is sixteen decibels over it, very tonal, and
- *    all bass: yes to all three questions above, and it even scores onsets out
- *    of its own noise. What a machine does not do is change. It is a spread and
- *    not a level, so unlike a fixed threshold it holds at any microphone gain.
+ *    `minLevelSwingDb` over the timbre window, from its 10th percentile to its
+ *    90th. In a calm room the floor sinks most of the way to its clamp, and
+ *    then a fridge clears the bar by more than ten decibels, is very tonal, and
+ *    is all bass: yes to all three questions above. What a machine does not do
+ *    is change. It is a spread and not a level, so unlike a fixed threshold it
+ *    holds at any microphone gain. Staying asks for a third of what entering
+ *    did, and while a song is playing a window too empty to read counts as
+ *    moving; see `update`.
  *
  * The detected tempo deliberately takes no part in the decision. A steady tone
  * has a nearly constant onset envelope, which correlates with itself at every
@@ -69,6 +71,12 @@ export const FLOOR_MAX_DB = -25;
  * below it, the onset of a steady sound would pass for movement.
  */
 const MIN_AUDIBLE_SHARE = 0.5;
+
+/**
+ * Share of `minLevelSwingDb` that is enough to keep dancing. Entering asks for
+ * all of it.
+ */
+const STAY_SWING_SHARE = 1 / 3;
 
 /** Most hops a window may hold, whatever the frame length. */
 const MAX_WINDOW_HOPS = 4096;
@@ -147,6 +155,12 @@ export class Classifier {
      */
     this.swing = 0;
     /**
+     * Whether the swing could be read: `false` while less than half the timbre
+     * window is audible, as in the first moments after a stop.
+     * @type {boolean}
+     */
+    this.swingKnown = false;
+    /**
      * Whether the audio looks like music right now, before the hysteresis.
      * @type {boolean}
      */
@@ -190,7 +204,15 @@ export class Classifier {
 
     const tonal = this.flatness <= this.config.maxFlatness;
     const pulse = this.onsets >= this.config.minOnsets || this.bass >= this.config.minBass;
-    const moves = this.swing >= this.config.minLevelSwingDb;
+    // Staying needs less movement than entering did, like the two level
+    // thresholds: a limiter leaves a record hovering around one bar, and one
+    // bar for both dropped it twice in forty seconds. And while a song is
+    // playing, a window too empty to read is not evidence of stillness: after
+    // a stop the spread is unreadable for half a window, which turned a stop
+    // of 1.5 s into a break 0.35 s after the band came back. To start dancing,
+    // though, the evidence has to be there.
+    const bar = this.config.minLevelSwingDb * (dancing ? STAY_SWING_SHARE : 1);
+    const moves = this.swingKnown ? this.swing >= bar : dancing;
     // One threshold does both jobs: below it there is nothing audible to read a
     // timbre from, so a separate level test would be saying the same thing twice.
     this.musicLike = this.levelDb !== null && this.levelDb >= audibleDb && tonal && pulse && moves;
@@ -266,7 +288,9 @@ export class Classifier {
     this.bass = audible ? bass : 0;
     this.flux = audible ? flux : 0;
     this.onsets = onsets;
-    this.swing = this.spread(audibleDb);
+    const spread = this.spread(audibleDb);
+    this.swingKnown = spread !== null;
+    this.swing = spread ?? 0;
   }
 
   /**
@@ -274,12 +298,12 @@ export class Classifier {
    * from its 10th to its 90th percentile, in dB.
    *
    * It is read from the level peak and not from the raw level of each hop. A
-   * 50 Hz hum has a 20 ms period and the analysis window is 23 ms, so its raw
-   * level beats against the hop and swings 1.4 dB while nothing is happening:
-   * the same aliasing that gives a hum a confident tempo. The peak over
-   * `levelWindowMs` is the level the first question already trusts. On it a
-   * fridge spreads 0.00 dB, and the calmest twentieth of the calmest record
-   * measured spreads 0.60.
+   * 50 Hz hum has a 20 ms period and the level is read over an 11.6 ms hop, a
+   * little over half of it, so the raw level beats against the hop: 4.0 dB
+   * from its 10th percentile to its 90th while nothing is happening. The same
+   * aliasing gives a hum a confident tempo. The peak over `levelWindowMs` is
+   * the level the first question already trusts. On it a fridge spreads
+   * 0.00 dB, and the calmest twentieth of the reference records 0.4 to 0.6.
    *
    * Percentiles and not a standard deviation, and only once half the window is
    * audible, because a sound that merely starts is not moving. The two hops
@@ -290,12 +314,13 @@ export class Classifier {
    * under a thirtieth of the sample and fall outside the percentiles.
    *
    * @param {number} audibleDb Level at or above which a moment counts as audible.
-   * @returns {number} The spread; 0 while less than half the window is audible.
+   * @returns {number | null} The spread, or `null` while less than half the
+   *   window is audible and there is nothing to read it from.
    */
   spread(audibleDb) {
     const audible = this.peaks.filter((peak) => peak >= audibleDb).sort((a, b) => a - b);
     if (audible.length < Math.max(2, this.peaks.length * MIN_AUDIBLE_SHARE)) {
-      return 0;
+      return null;
     }
     const at = (/** @type {number} */ share) => audible[Math.floor((audible.length - 1) * share)];
     return at(0.9) - at(0.1);
@@ -303,21 +328,25 @@ export class Classifier {
 
   /**
    * Let the floor learn the room. It drops to a new quiet level at once and
-   * climbs back slowly, and it holds still while a song is playing, so a long
-   * loud set cannot pull the floor up behind it and end in a break.
+   * climbs back slowly, and it holds still while a song is playing or the audio
+   * looks like one, so neither a song under way nor a song that was already
+   * playing when the page opened can pull the floor up behind it.
    *
-   * It does not hold still for audio that merely looks like music. It used to,
-   * and a wrong first impression then froze the evidence that would have
-   * overturned it: the floor sat at its clamp under twenty seconds of hum. A
-   * song that really is starting costs at most `musicEnterMs` of climbing,
-   * three decibels, before the state turns and the floor stops.
+   * Holding still only once the state had turned was tried on 2026-09-20 and
+   * withdrawn the same day. It was meant to let a wrong first impression
+   * correct itself, and it cannot: the state turns within a second and holds
+   * the floor anyway. What it did do was chase every song through the 1.75 s
+   * it takes to be sure of one, lift the bar 3 dB, and lose the quiet ones: a
+   * band ten decibels over the room went from 97% music to never heard. The
+   * fourth question is what keeps a machine out, and with it all four saying
+   * yes is evidence enough to stop learning.
    *
    * @param {number} frameMs Duration of the audio the frame covers.
    * @param {boolean} dancing Whether a song was already playing this frame.
    * @returns {void}
    */
   adaptFloor(frameMs, dancing) {
-    if (dancing || this.levelDb === null) {
+    if (this.musicLike || dancing || this.levelDb === null) {
       return;
     }
     // A quieter room is taken at once and a louder one only at `rise` a frame,

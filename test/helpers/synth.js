@@ -247,6 +247,24 @@ export function band(bpm, seconds, sampleRate, rand = mulberry32(SEED)) {
 }
 
 /**
+ * A brick-wall limiter: clip at `ceiling` times the RMS, then bring the result
+ * back to -20 dBFS. At 1.0 the peaks of every hit are gone and what is left
+ * moves about a quarter of a decibel, which is what a PA with a hard limiter on
+ * it sends into the room.
+ *
+ * @param {Float32Array} audio The clean source.
+ * @param {number} ceiling Where to clip, as a multiple of the RMS level.
+ * @returns {Float32Array} The limited audio.
+ */
+export function limited(audio, ceiling) {
+  const limit = ceiling * rms(audio);
+  return scaleToDb(
+    audio.map((sample) => Math.max(-limit, Math.min(limit, sample))),
+    -20,
+  );
+}
+
+/**
  * Pass audio through a phone speaker in a room and into a laptop microphone:
  * no low end, two early reflections, a long way down, and the room on top.
  * Real music reaches the classifier like this, never as a clean file.
