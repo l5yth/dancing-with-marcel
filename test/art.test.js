@@ -75,6 +75,46 @@ describe('the art', () => {
     }
   });
 
+  it('C19: dark cloth is mass, not an empty outline', () => {
+    // With no fill light a surface's lightness is capped by its albedo, and
+    // leather is 0.11: a fully lit jacket landed on step 4 of a seventy-step
+    // ramp and its shadow side on step 0. Only the rim escaped, so the jacket
+    // was its own outline and the tee, the skin and the hair floated inside
+    // it. idle_a put 69% of its marks in the lowest fifth of the ramp.
+    for (const name of ['idle_a', 'beer_hold', 'pogo_air']) {
+      const found = marks(gen.RAMP, draw(name));
+      const sunk = found.filter((mark) => mark.level <= 0.2).length;
+      assert.ok(
+        sunk / found.length <= 0.3,
+        `${name}: ${((100 * sunk) / found.length).toFixed(0)}% of the marks are in the lowest fifth of the ramp`,
+      );
+    }
+  });
+
+  it('C19: the contact line is as bright as it claims to be', () => {
+    // Its ellipse was 0.012 tall against a cell of 0.0166, so supersampling
+    // averaged it down: a tone of 0.10, which is a lightness of 0.90, drew at
+    // 0.55. The comment said one thin bright line and the art drew a dashed
+    // grey one.
+    const lit = draw('idle_a');
+    const bare = draw('idle_a', { shadow: 0 });
+    const cells = marks(gen.RAMP, lit).filter(
+      (mark) => (bare[mark.row]?.[mark.col] ?? ' ') !== mark.char,
+    );
+    assert.ok(cells.length >= 5, `only ${cells.length} cells of contact line`);
+    // Its core, not its tips: it is an ellipse, so the ends taper by design.
+    // Before the fix the whole thing topped out at 0.64 and averaged 0.55.
+    const brightest = Math.max(...cells.map((mark) => mark.level));
+    assert.ok(
+      brightest >= 0.85,
+      `the brightest cell of the contact line is ${brightest.toFixed(2)}`,
+    );
+    assert.ok(
+      mean(cells) >= 0.7,
+      `the contact line averages ${mean(cells).toFixed(2)}, so it is still a grey dash`,
+    );
+  });
+
   it('C18: the light is gathered, not painted along every pale edge', () => {
     // The generator used to force the silhouette of any pale material to an ink
     // outline, a device for separating pale objects from white paper. On black

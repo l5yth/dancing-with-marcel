@@ -31,8 +31,6 @@ interface FrameMeta {
   group: string;
   /** How much energy the frame carries, from 0 for still to 3 for a chorus. */
   energy: number;
-  /** Where it falls in the bar: `down`, `up`, `and`, or `null` off the beat. */
-  beat: string | null;
 }
 
 /** What the scene director needs: the tuning, and a source of chance. */

@@ -130,6 +130,14 @@ export function boot(env) {
   start.addEventListener('click', () => capture.start());
   window.addEventListener('resize', fit);
   fit();
+  // The cell is measured once and kept, since the font does not change. It does
+  // change once: the shipped face arrives after the first paint, and a grid
+  // sized against the fallback would be the wrong shape for the rest of the
+  // night. Measure again when it lands.
+  document.fonts?.ready.then(() => {
+    stage.cell = null;
+    fit();
+  });
   window.requestAnimationFrame(paint);
   return { capture, director, stage };
 }

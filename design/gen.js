@@ -33,6 +33,13 @@ const X0 = -COLS * CELL_W / 2;
 const Y_TOP = 2.09;
 const SS = 3;                       // supersamples per axis
 const GAMMA = 0.95;
+/* Fill light. Without it a surface's lightness is capped by its albedo, and
+   leather is 0.11: a fully lit jacket lands on step 4 of a seventy-step ramp
+   and its shadow side on step 0, so dark cloth exists only as its rim. Raising
+   this lifts the floor without touching the rims, speculars or flat tones, so
+   the eyes stay black and the foam stays white. Past about 0.25 the tee stops
+   being the brightest thing he wears and C18 fails. Set it on the projector. */
+const LIFT = 0.15;
 const CONTRAST = 1.16;
 
 const RAMP = [' ','.',"'",'`','^','"',',',':',';','I','l','!','i','>','<','~','+','_','-','?',
@@ -93,7 +100,7 @@ function shade(hit, mat) {
   const nr = Math.max(0, n[0]*RIM[0] + n[1]*RIM[1] + n[2]*RIM[2]);
   const nr2 = Math.max(0, n[0]*RIM2[0] + n[1]*RIM2[1] + n[2]*RIM2[2]);
   const rm = (Math.pow(nr, 1.6) + Math.pow(nr2, 1.8) * 0.62) * (mat.rim || 0);
-  return clamp(mat.alb * (AMB + DIF * nd) + sp * 0.85 + rm, 0, 1);
+  return clamp(LIFT + (1 - LIFT) * mat.alb * (AMB + DIF * nd) + sp * 0.85 + rm, 0, 1);
 }
 
 /* ---- primitives ------------------------------------------------------ */
@@ -183,9 +190,12 @@ function uni(parts, mat, o) {
   };
 }
 
-const softBlob = (c, rx, ry, tone, rotDeg) => {
-  const e = ell(c, rx, ry, rotDeg || 0, { tone, flat: true }, { soft: true });
-  e.softTone = tone; return e;
+/* A haze: smoke, spray, the couch. `light` is what the rasteriser puts on the
+   cell directly, falling off to nothing at the edge, so it is a lightness and
+   not the ink a flat material's `tone` is. The two run opposite ways. */
+const softBlob = (c, rx, ry, light, rotDeg) => {
+  const e = ell(c, rx, ry, rotDeg || 0, { tone: 1 - light, flat: true }, { soft: true });
+  e.softTone = light; return e;
 };
 
 /* ---- inverse kinematics ---------------------------------------------- */
@@ -451,7 +461,9 @@ function buildParts(P) {
     /* The floor stays where it is: a standing ankle sits at 0.115 and the sole
        0.055 under it, so that is the height of the line whether he is on it or
        over it. Leaving the ground only thins and dims it. */
-    o.push(ell([cx, 0.060], 0.26 * lift, 0.006, 0,
+    /* Half a cell tall: at 0.006 the ellipse covered less than one row and
+       supersampling averaged a lightness of 0.90 down to 0.55. */
+    o.push(ell([cx, 0.060], 0.26 * lift, 0.0085, 0,
                { tone: 0.10 + 0.5 * (1 - lift), flat: true }));
   }
   (P.behind || []).forEach(f => f(o, S, P));

@@ -100,6 +100,32 @@ describe('app', () => {
     assert.equal(document.elements.panel.hidden, false, 'the start button is still offered');
   });
 
+  it('C19: the grid is measured again when the shipped face lands', async () => {
+    // The cell is measured once and kept. The font does change once: the
+    // shipped face arrives after the first paint, and a grid sized against
+    // whatever monospace the machine had would be the wrong shape all night.
+    const { document, env } = setup();
+    const { stage } = boot(env);
+    assert.equal(document.created.length, 1, 'measured once to begin with');
+    const before = document.elements.stage.style.fontSize;
+
+    // A taller cell in the new face. Height, because the grid is height-bound
+    // on any wide window: a wider cell would change nothing and prove nothing.
+    document.cell.height = 132;
+    await document.loadFonts();
+    assert.equal(document.created.length, 2, 'the cell was never measured again');
+    assert.notEqual(document.elements.stage.style.fontSize, before);
+    assert.ok(stage.cell !== null, 'the stage is left without a measurement');
+  });
+
+  it('C19: a page whose browser has no font set still draws', () => {
+    const { document, window, env } = setup();
+    document.fonts = undefined;
+    assert.doesNotThrow(() => boot(env));
+    window.runFrame(0);
+    assert.ok(document.elements.stage.textContent.length > 1000);
+  });
+
   it('C16: the stage is refitted when the window changes shape', () => {
     const { document, window, env } = setup();
     boot(env);

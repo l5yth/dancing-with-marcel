@@ -284,10 +284,28 @@ export function createFakeDocument({ missing = [], cell = { width: 60, height: 8
     }
   }
   const created = [];
+  /** @type {() => void} */
+  let faceLanded = () => {};
+  const ready = new Promise((resolve) => {
+    faceLanded = () => resolve(undefined);
+  });
   return {
     elements,
     created,
     hidden: false,
+    /** Size of a character cell at 100px; a test may change it mid-run. */
+    cell,
+    /** The page's font set; `ready` settles when the test says the face landed. */
+    fonts: { ready },
+    /**
+     * Pretend the shipped face finished loading.
+     *
+     * @returns {Promise<void>} Settles once the app has reacted.
+     */
+    loadFonts() {
+      faceLanded();
+      return ready.then(() => undefined);
+    },
     addEventListener(/** @type {string} */ _type, /** @type {() => void} */ _listener) {
       // The app passes the page to the capture as its visibility source.
     },

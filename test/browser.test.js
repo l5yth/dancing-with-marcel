@@ -127,6 +127,49 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
     assert.deepEqual(session.logs, [], 'the console stayed quiet');
   });
 
+  it('C19: the stage draws in the face the repository ships, and is sized for it', async () => {
+    const session = await page();
+    const look = await session.evaluate(
+      `(async () => {
+         await document.fonts.ready;
+         const stage = document.getElementById('stage');
+         return { family: getComputedStyle(stage).fontFamily,
+                  loaded: document.fonts.check('16px "Courier Prime"'),
+                  width: stage.getBoundingClientRect().width,
+                  height: stage.getBoundingClientRect().height };
+       })()`,
+    );
+    // The face decides the picture: every glyph of the ramp is a different
+    // brightness in Courier New, in DejaVu, and in the Courier Prime the art
+    // was approved in, and the machine at the venue may have none of them.
+    assert.match(look.family, /^["']?Courier Prime["']?,/, `stage font stack is ${look.family}`);
+    assert.equal(look.loaded, true, 'the shipped face never loaded');
+    // The cell is measured once and cached, so a face that lands after the
+    // first fit leaves the art sized against the wrong grid.
+    assert.ok(look.width <= 1280 + 1 && look.height <= 800 + 1, 'the art overflows the window');
+    assert.ok(
+      Math.abs(look.height - 800) < 2 || Math.abs(look.width - 1280) < 2,
+      `after the font landed the grid fills neither axis: ${look.width}x${look.height}`,
+    );
+  });
+
+  it('C19: the start button is part of its panel', async () => {
+    const session = await page();
+    const size = await session.evaluate(
+      `(() => {
+         const px = (id) => Number.parseFloat(getComputedStyle(document.getElementById(id)).fontSize);
+         return { label: px('label'), button: Number.parseFloat(
+           getComputedStyle(document.querySelector('#panel button')).fontSize) };
+       })()`,
+    );
+    // It inherited 16px from the body under an 86px label, and it is what
+    // somebody has to hit on a projector with a trackpad.
+    assert.ok(
+      size.button >= size.label / 3,
+      `label ${size.label}px over a ${size.button}px button`,
+    );
+  });
+
   it('C18: the debug text is one block in the corner, on its own ground', async () => {
     const session = await page({ query: '?debug=1' });
     const look = await session.evaluate(

@@ -110,8 +110,7 @@ function writeIndex(names, gen) {
   const meta = names
     .map((name) => {
       const pose = gen.POSES[name];
-      const beat = pose.beat === undefined ? 'null' : JSON.stringify(pose.beat);
-      return `  ${name}: { group: ${JSON.stringify(pose.group)}, energy: ${pose.energy}, beat: ${beat} },`;
+      return `  ${name}: { group: ${JSON.stringify(pose.group)}, energy: ${pose.energy} },`;
     })
     .join('\n');
   const loops = Object.entries(gen.LOOPS)
@@ -178,6 +177,6 @@ for (const name of names) {
 }
 writeIndex(names, gen);
 if (undefinedRows > 0) {
-  throw new Error(`${undefinedRows} rows still render as undefined; the repair is incomplete`);
+  throw new Error(`${undefinedRows} rows render as undefined; a material has a tone but no albedo`);
 }
 console.log(`wrote ${names.length} frames and an index to ${OUT}`);

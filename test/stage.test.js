@@ -51,6 +51,15 @@ describe('sprite sheet', () => {
     }
   });
 
+  it('C19: a frame carries only what the scene director reads', () => {
+    // Every frame also carried `beat`: down, up or and. render.mjs wrote it,
+    // app.d.ts typed it, and no module read it. The stage decides the rate on
+    // its own, so the field was a second opinion nobody asked.
+    for (const [name, meta] of Object.entries(FRAME_META)) {
+      assert.deepEqual(Object.keys(meta).sort(), ['energy', 'group'], `${name} carries more`);
+    }
+  });
+
   it('C16: no frame contains the text undefined', () => {
     for (const [name, rows] of Object.entries(FRAMES)) {
       assert.ok(
