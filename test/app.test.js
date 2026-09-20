@@ -19,6 +19,8 @@ import { existsSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { boot } from '../src/app.js';
+import { BREAK_LOOPS, DANCE_LOOPS } from '../src/classify/scene.js';
+import { DEFAULTS } from '../src/config.js';
 import {
   createAudioStack,
   createFakeDocument,
@@ -36,7 +38,7 @@ import { drums, silence } from './helpers/synth.js';
  * @param {string[]} [options.missing] Element ids to leave out of the page.
  * @returns {any} The stack, the page, and the environment.
  */
-function setup({ search = '', missing = [] } = {}) {
+function setup({ search = '', missing = [], random = () => 0 } = {}) {
   const stack = createAudioStack();
   const document = createFakeDocument({ missing });
   const window = createFakeWindow();
@@ -49,7 +51,7 @@ function setup({ search = '', missing = [] } = {}) {
     AudioContext: stack.AudioContext,
     AudioWorkletNode: stack.AudioWorkletNode,
     window,
-    random: () => 0,
+    random,
   };
   return { stack, document, window, timers, env };
 }
@@ -122,14 +124,101 @@ describe('app', () => {
 
   it('C16: what he performs follows what is heard', async () => {
     const { stack, document, window, env } = setup();
-    boot(env);
+    const { director } = boot(env);
     await click(document);
     window.runFrame(0);
     const beforeMusic = document.elements.stage.textContent;
+    assert.ok(BREAK_LOOPS.includes(director.loop), 'between songs to begin with');
+
     push(stack, drums(120, 4, RATE));
     window.runFrame(16);
-    assert.notEqual(document.elements.stage.textContent, beforeMusic, 'he started dancing');
+    assert.notEqual(document.elements.stage.textContent, beforeMusic, 'the scene changed');
     assert.equal(document.elements.label.textContent.startsWith('music'), true);
+    assert.ok(DANCE_LOOPS.flat().includes(director.loop), 'and it is a dance');
+  });
+
+  it('C16: the beat drives the stage, not the between-song rate', async () => {
+    // The wiring, not its effects: with `dancing` false, or the dance tempo
+    // replaced by the default, or the frame rate left at breakFrameMs, the
+    // frames below would not advance where an eighth note says they must.
+    const { stack, document, window, env } = setup();
+    boot(env);
+    await click(document);
+    // Long enough for the tempo to lock, so the dance tempo is the detected
+    // one and not the default it would fall back to.
+    push(stack, drums(120, 8, RATE));
+
+    /**
+     * The frame drawn at a moment.
+     *
+     * @param {number} elapsedMs When to paint.
+     * @returns {string} What was drawn.
+     */
+    const at = (elapsedMs) => {
+      window.runFrame(elapsedMs);
+      return document.elements.stage.textContent;
+    };
+    // Read the tempo he settled on rather than assuming it.
+    const shown = /music \((\d+) bpm\)/.exec(document.elements.label.textContent);
+    assert.ok(shown !== null, `no tempo locked: ${document.elements.label.textContent}`);
+    const danceBpm = Number(shown[1]);
+    assert.ok(Math.abs(danceBpm - 120) <= 4, `${danceBpm} bpm for a 120 bpm fixture`);
+    assert.notEqual(danceBpm, DEFAULTS.defaultBpm, 'the default would hide a broken wiring');
+    const eighth = 60000 / danceBpm / 2;
+    assert.equal(at(0), at(eighth - 20), 'the frame holds inside one eighth note');
+    assert.notEqual(at(0), at(eighth + 20), 'and turns over at the next');
+    assert.notEqual(at(eighth + 20), at(2 * eighth + 20), 'and keeps going');
+  });
+
+  it('C16: between songs he is not hurried along by the beat', async () => {
+    const { stack, document, window, env } = setup();
+    boot(env);
+    await click(document);
+    push(stack, silence(2, RATE));
+    window.runFrame(0);
+    const first = document.elements.stage.textContent;
+    // Odd moments as well as even ones, so a frame rate gone wrong cannot land
+    // back on the same frame of a two-frame loop by luck.
+    for (const elapsedMs of [3, 501, 1100, 2399]) {
+      window.runFrame(elapsedMs);
+      assert.equal(
+        document.elements.stage.textContent,
+        first,
+        `the frame moved at ${elapsedMs} ms, inside one break frame`,
+      );
+    }
+  });
+
+  it('C16: the overlay names the scene actually being performed', async () => {
+    const { stack, document, env } = setup({ search: '?debug=1' });
+    const { director } = boot(env);
+    await click(document);
+    push(stack, drums(120, 3, RATE));
+    const shown = /^state\s+\w+\s+scene (\w+)$/m.exec(document.elements.overlay.textContent);
+    assert.ok(shown !== null, document.elements.overlay.textContent);
+    assert.equal(shown[1], director.loop, 'the overlay is reporting a different scene');
+  });
+
+  it('C16: the scene director is given the time that really passed', async () => {
+    // A hold that never elapses would leave one dance running all night.
+    // Chance has to vary, or every re-pick would land on the same loop and
+    // prove nothing.
+    let draw = 0;
+    const { stack, document, env } = setup({
+      search: '?sceneHoldMs=400',
+      random: () => [0, 0.35, 0.7, 0.95][draw++ % 4],
+    });
+    const { director } = boot(env);
+    await click(document);
+    push(stack, drums(120, 2, RATE));
+    assert.ok(director.heldMs > 0, 'no time reached the director');
+    const first = director.loop;
+    let changed = false;
+    for (let round = 0; round < 12 && !changed; round += 1) {
+      push(stack, drums(120, 0.5, RATE));
+      changed = director.loop !== first;
+    }
+    assert.ok(changed, 'the hold never elapsed, so the scene never moved on');
   });
 
   it('unit: ?debug=1 also shows the repository link', () => {

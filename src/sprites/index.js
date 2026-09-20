@@ -53,11 +53,13 @@ import { rows as tuneUp } from './tune_up.js';
 import { rows as n64 } from './n64.js';
 import { rows as ampLean } from './amp_lean.js';
 
-/** The grid every frame shares, and the cell shape it was drawn for. */
+/**
+ * The grid every frame shares. The cell shape is deliberately absent: the stage
+ * measures the font it actually got rather than trusting a number from here.
+ */
 export const SHEET = Object.freeze({
   cols: 168,
   rows: 128,
-  charAspect: 0.682,
 });
 
 /**

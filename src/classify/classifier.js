@@ -21,10 +21,15 @@
  * 1. **Is it loud?** Not against a fixed level, but against an adaptive floor
  *    that learns the room while nothing musical is playing. A quiet flat and a
  *    loud party then need no separate tuning.
- * 2. **Is it tonal?** The flattest spectrum among the audible moments of the
- *    last `timbreWindowMs`. Applause, hiss, and chatter stay near 0.8 flat;
- *    music dips well below, because instruments have peaks. Only audible
- *    moments count, since silence between drum hits is flat by definition.
+ * 2. **Is it tonal?** The *most tonal* audible moment of the last
+ *    `timbreWindowMs` is at most `maxFlatness`: one clear moment in a second
+ *    and a half is enough. Music passes because instruments have peaks, even
+ *    when a cymbal or a shout makes most of the window flat; applause, hiss,
+ *    and chatter never dip below about 0.75, so nothing in their window
+ *    qualifies. Requiring *every* moment to be tonal would reject music, not
+ *    noise. Only audible moments count, since silence between drum hits is
+ *    flat by definition. The margin is about 0.15, which is why `maxFlatness`
+ *    is tunable and why the rehearsal is the check that matters (SPEC R2).
  * 3. **Is something happening?** Repeated onsets, or bass. Either is enough, so
  *    a thin track full of strumming and a bass-heavy one both pass, including a
  *    guitar intro before the band comes in. What fails is a sound that just
@@ -102,7 +107,8 @@ export class Classifier {
      */
     this.levelDb = null;
     /**
-     * Flattest spectrum among the audible hops of the timbre window, 1 when none.
+     * Most tonal (lowest) flatness among the audible hops of the timbre window,
+     * 1 when there are none.
      * @type {number}
      */
     this.flatness = 1;
@@ -148,31 +154,38 @@ export class Classifier {
   update(frame, frameMs) {
     const { musicOverFloorDb, breakUnderFloorDb, musicEnterMs, breakHoldMs } = this.config;
     this.remember(frame, frameMs);
-    const audibleDb = this.floorDb + musicOverFloorDb;
+    const dancing = this.state === 'music';
+    // Which moments count as audible follows the threshold in force. While
+    // dancing that is the lower one: read a quiet passage against the entry
+    // threshold and its moments look like silence, silence reads as flat, and
+    // the song ends on a bridge. This is what makes the two thresholds differ
+    // beyond the memory of the timbre window.
+    const audibleDb = this.floorDb + (dancing ? breakUnderFloorDb : musicOverFloorDb);
     this.measure(audibleDb);
 
     const tonal = this.flatness <= this.config.maxFlatness;
     const pulse = this.onsets >= this.config.minOnsets || this.bass >= this.config.minBass;
+    // One threshold does both jobs: below it there is nothing audible to read a
+    // timbre from, so a separate level test would be saying the same thing twice.
     this.musicLike = this.levelDb !== null && this.levelDb >= audibleDb && tonal && pulse;
 
-    if (this.state === 'break') {
+    if (!dancing) {
       this.heldMs = this.musicLike ? this.heldMs + frameMs : 0;
       if (this.heldMs >= musicEnterMs) {
         this.state = 'music';
         this.heldMs = 0;
       }
     } else {
-      // Leaving needs a lower level than entering did, so a quiet passage in a
-      // song does not flip the state back and forth.
-      const stillMusic =
-        this.levelDb !== null && this.levelDb >= this.floorDb + breakUnderFloorDb && tonal && pulse;
-      this.heldMs = stillMusic ? 0 : this.heldMs + frameMs;
+      // Leaving needs less level than entering did, so a quiet passage in a
+      // song does not flip the state back and forth: `audibleDb` above already
+      // carries the lower threshold while dancing.
+      this.heldMs = this.musicLike ? 0 : this.heldMs + frameMs;
       if (this.heldMs >= breakHoldMs) {
         this.state = 'break';
         this.heldMs = 0;
       }
     }
-    this.adaptFloor(frameMs);
+    this.adaptFloor(frameMs, dancing);
     return this.state;
   }
 
@@ -227,20 +240,22 @@ export class Classifier {
 
   /**
    * Let the floor learn the room. It drops to a new quiet level at once and
-   * climbs back slowly, and it stops climbing while the audio looks like
-   * music, so a song that is already playing when the page opens cannot pull
-   * the floor up behind it and lock Marcel into a break.
+   * climbs back slowly, and it stops climbing while a song is playing or the
+   * audio looks like one, so neither a song under way nor a song that was
+   * already playing when the page opened can pull the floor up behind it and
+   * lock Marcel into a break.
    *
    * @param {number} frameMs Duration of the audio the frame covers.
+   * @param {boolean} dancing Whether a song was already playing this frame.
    * @returns {void}
    */
-  adaptFloor(frameMs) {
-    if (this.musicLike || this.levelDb === null) {
+  adaptFloor(frameMs, dancing) {
+    if (this.musicLike || dancing || this.levelDb === null) {
       return;
     }
+    // A quieter room is taken at once and a louder one only at `rise` a frame,
+    // which is one minimum: below the floor the target wins, above it the climb does.
     const rise = (this.config.floorRiseDbPerSec * frameMs) / 1000;
-    const target = this.levelDb;
-    this.floorDb = target < this.floorDb ? target : Math.min(target, this.floorDb + rise);
-    this.floorDb = clamp(this.floorDb, FLOOR_MIN_DB, FLOOR_MAX_DB);
+    this.floorDb = clamp(Math.min(this.levelDb, this.floorDb + rise), FLOOR_MIN_DB, FLOOR_MAX_DB);
   }
 }

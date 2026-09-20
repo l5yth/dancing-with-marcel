@@ -15,6 +15,7 @@
 */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { FRAME_META, FRAMES, LOOPS, SHEET } from '../src/sprites/index.js';
 import { frameAt, frameText, Stage } from '../src/view/stage.js';
@@ -37,7 +38,9 @@ function setup(cell) {
 
 describe('sprite sheet', () => {
   it('C16: every frame sits on the same grid and carries the design metadata', () => {
-    assert.deepEqual(SHEET, { cols: 168, rows: 128, charAspect: 0.682 });
+    // Exactly these two: a cell shape here would be a second opinion on the
+    // font, and `fit` measures the real one.
+    assert.deepEqual(SHEET, { cols: 168, rows: 128 });
     assert.equal(Object.keys(FRAMES).length, 32);
     for (const [name, rows] of Object.entries(FRAMES)) {
       assert.equal(rows.length, SHEET.rows, name);
@@ -76,6 +79,23 @@ describe('sprite sheet', () => {
       }
     }
     assert.deepEqual([...used].sort(), Object.keys(FRAMES).sort());
+  });
+
+  it('C16: the committed art is what the vendored generator draws, frame for frame', () => {
+    // SPEC D10: the generator is the source, not the exports. Without this,
+    // a hand-edited sprite would pass every other check in this file.
+    const source = readFileSync(new URL('../design/gen.js', import.meta.url), 'utf8');
+    const repair = [
+      '  if (mat.flat) return mat.tone;',
+      '  if (mat.flat || (mat.alb == null && mat.tone != null)) return mat.tone;',
+    ];
+    assert.ok(source.includes(repair[0]), 'the documented repair no longer applies');
+    const gen = new Function(source.replace(repair[0], repair[1]))();
+    assert.deepEqual(Object.keys(gen.POSES).sort(), Object.keys(FRAMES).sort());
+    assert.deepEqual(gen.LOOPS, LOOPS);
+    for (const [name, pose] of Object.entries(gen.POSES)) {
+      assert.deepEqual(gen.renderPose(pose), FRAMES[name], `${name} is not what gen.js draws`);
+    }
   });
 
   it('C16: a frame is drawn as rows joined by newlines, and cached', () => {

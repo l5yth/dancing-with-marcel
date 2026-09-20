@@ -173,6 +173,21 @@ describe('classifier', () => {
       0,
       'fell back to break',
     );
+    const entryIndex = events.indexOf(entered);
+    assert.ok(
+      labels.slice(0, entryIndex).every((label) => label === 'break'),
+      'nothing is claimed before the music starts',
+    );
+    const locked = events.findIndex((event) => event.locked);
+    assert.ok(locked > entryIndex, 'the tempo locks after the music starts, not before');
+    assert.ok(
+      labels.slice(entryIndex, locked).every((label) => label === 'music'),
+      'between entering and locking the label is exactly music',
+    );
+    assert.ok(
+      events.slice(entryIndex).every((event) => event.state === 'music'),
+      'he keeps dancing to the end of the fixture',
+    );
     const shown = labels.findIndex((label) => /^music \(\d+ bpm\)$/.test(label));
     assert.ok(shown !== -1, 'the tempo is never shown');
     assert.ok(events[shown].time <= LEAD + 10, `tempo shown at ${events[shown].time} s`);
@@ -304,6 +319,82 @@ describe('classifier', () => {
     );
   });
 
+  it('C6: entering needs more level than staying does, which is what stops the flapping', () => {
+    // A song that sits between the two thresholds keeps dancing but could not
+    // have started; one gate for both would flap on exactly this passage.
+    const config = { ...DEFAULTS, musicOverFloorDb: 20, breakUnderFloorDb: 6 };
+    const between = -60 + 10;
+    const quiet = new Classifier(config);
+    for (let elapsed = 0; elapsed < 8000; elapsed += 10) {
+      quiet.update(
+        { time: 0, levelDb: between, flux: 1, flatness: 0.1, bass: 0.9, tempo: null },
+        10,
+      );
+    }
+    assert.equal(quiet.state, 'break', 'that level is not enough to start');
+
+    const playing = new Classifier(config);
+    const loud = { time: 0, levelDb: -20, flux: 1, flatness: 0.1, bass: 0.9, tempo: null };
+    for (let elapsed = 0; elapsed < 3000; elapsed += 10) {
+      playing.update(loud, 10);
+    }
+    assert.equal(playing.state, 'music');
+    const floor = playing.floorDb;
+    for (let elapsed = 0; elapsed < 8000; elapsed += 10) {
+      playing.update(
+        { time: 0, levelDb: floor + 10, flux: 1, flatness: 0.1, bass: 0.9, tempo: null },
+        10,
+      );
+    }
+    assert.equal(playing.state, 'music', 'but it is enough to keep going');
+  });
+
+  it('C4: only audible moments are read, so silence between hits cannot vouch for noise', () => {
+    // Flat and loud, with tonal moments hidden below the floor: counting the
+    // quiet ones would let this pass as music.
+    const classifier = new Classifier(DEFAULTS);
+    for (let beat = 0; beat < 400; beat += 1) {
+      for (let hop = 0; hop < 10; hop += 1) {
+        const audible = hop < 5;
+        classifier.update(
+          {
+            time: 0,
+            levelDb: audible ? -20 : -100,
+            flux: 1,
+            flatness: audible ? 0.9 : 0.01,
+            bass: 0,
+            tempo: null,
+          },
+          10,
+        );
+      }
+    }
+    assert.equal(classifier.state, 'break');
+    assert.ok(classifier.flatness > DEFAULTS.maxFlatness, `${classifier.flatness}`);
+  });
+
+  it('C1: one tonal moment in the window is enough, which is what lets music through', () => {
+    // The mirror of the check above: mostly flat, one clear moment per window.
+    const classifier = new Classifier(DEFAULTS);
+    for (let beat = 0; beat < 400; beat += 1) {
+      for (let hop = 0; hop < 10; hop += 1) {
+        classifier.update(
+          {
+            time: 0,
+            levelDb: -20,
+            flux: 1,
+            flatness: hop === 0 ? 0.2 : 0.9,
+            bass: 0,
+            tempo: null,
+          },
+          10,
+        );
+      }
+    }
+    assert.equal(classifier.state, 'music');
+    assert.ok(classifier.flatness <= DEFAULTS.maxFlatness, `${classifier.flatness}`);
+  });
+
   it('unit: the floor learns a quiet room at once and a louder one slowly', () => {
     const classifier = new Classifier(DEFAULTS);
     assert.equal(classifier.floorDb, FLOOR_START_DB);
@@ -334,12 +425,14 @@ describe('classifier', () => {
       quiet.update({ time: 0, levelDb: -120, flux: 0, flatness: 1, bass: 0, tempo: null }, 10);
     }
     assert.equal(quiet.floorDb, FLOOR_MIN_DB);
+    assert.equal(FLOOR_MIN_DB, -80, 'SPEC D10 states the floor is clamped to -80 dBFS');
 
     const loud = new Classifier(DEFAULTS);
     for (let index = 0; index < 20000; index += 1) {
       loud.update({ time: 0, levelDb: 0, flux: 0, flatness: 1, bass: 0, tempo: null }, 10);
     }
     assert.equal(loud.floorDb, FLOOR_MAX_DB);
+    assert.equal(FLOOR_MAX_DB, -25, 'SPEC D10 states the floor is clamped to -25 dBFS');
   });
 
   it('unit: the floor stops climbing while the audio looks like music', () => {

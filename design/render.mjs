@@ -141,11 +141,13 @@ function writeIndex(names, gen) {
 
 ${imports}
 
-/** The grid every frame shares, and the cell shape it was drawn for. */
+/**
+ * The grid every frame shares. The cell shape is deliberately absent: the stage
+ * measures the font it actually got rather than trusting a number from here.
+ */
 export const SHEET = Object.freeze({
   cols: ${gen.COLS},
   rows: ${gen.ROWS},
-  charAspect: 0.682,
 });
 
 /**

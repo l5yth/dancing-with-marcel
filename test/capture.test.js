@@ -244,6 +244,7 @@ describe('capture', () => {
   });
 
   it('C12: frames that stop arriving restart the capture, and frames that keep coming do not', async () => {
+    assert.equal(WATCHDOG_MS, 3000, 'SPEC D6 states three seconds without frames');
     const { stack, capture, timers } = setup();
     await capture.start();
     for (let elapsed = 0; elapsed < WATCHDOG_MS * 3; elapsed += WATCHDOG_MS / 2) {

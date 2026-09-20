@@ -160,6 +160,17 @@ describe('scene director', () => {
     );
   });
 
+  it('C8: level weighs more than tempo, so loud and slow beats quiet and fast', () => {
+    // Every earlier case moved level and tempo together, which any blend of
+    // the two would pass. These pull them apart.
+    const scene = director([0]);
+    const loudSlow = scene.driveOf(event({ levelDb: -30, danceBpm: DEFAULTS.bpmMin }));
+    const quietFast = scene.driveOf(event({ levelDb: -48, danceBpm: DEFAULTS.bpmMax }));
+    assert.ok(loudSlow > quietFast, `loud and slow ${loudSlow}, quiet and fast ${quietFast}`);
+    assert.ok(Math.abs(loudSlow - 0.6) < 1e-9, `${loudSlow}: level alone should carry 0.6`);
+    assert.ok(Math.abs(quietFast - 0.4) < 1e-9, `${quietFast}: tempo alone should carry 0.4`);
+  });
+
   it('C8: drive runs from 0 to 1 and never leaves it', () => {
     const scene = director([0]);
     assert.equal(scene.driveOf(event({ levelDb: -48, danceBpm: DEFAULTS.bpmMin })), 0);

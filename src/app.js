@@ -54,7 +54,8 @@ function element(document, id) {
  * pipeline, and the stage performs what the pipeline decides.
  *
  * @param {Env} env Browser globals.
- * @returns {Capture} The capture, for inspection.
+ * @returns {{capture: Capture, director: SceneDirector, stage: Stage}} What was
+ *   wired, so a test can see the wiring and not merely its effects.
  */
 export function boot(env) {
   const { document, location, navigator, window } = env;
@@ -125,5 +126,5 @@ export function boot(env) {
   window.addEventListener('resize', fit);
   fit();
   window.requestAnimationFrame(paint);
-  return capture;
+  return { capture, director, stage };
 }

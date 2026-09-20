@@ -20,10 +20,11 @@ import { DEFAULTS } from '../src/config.js';
 import { overlayText, statusText } from '../src/view/text.js';
 
 describe('view text', () => {
-  it('unit: every capture status has a message', () => {
+  it('unit: every capture status that has something to say has a message', () => {
+    // `running` is not among them: the type excludes it, because the label is
+    // the classifier's from then on.
     assert.equal(statusText('idle'), 'click start');
     assert.equal(statusText('starting'), 'starting');
-    assert.equal(statusText('running'), '');
     assert.match(statusText('denied'), /denied.*retry/);
     assert.equal(statusText('error', 'no device'), 'error: no device');
     assert.equal(statusText('error'), 'error: ');

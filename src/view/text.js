@@ -17,15 +17,19 @@
 /**
  * @file Text shown on the page: capture status messages and the `?debug=1`
  * overlay. The debug word itself comes from `classify/label.js`, which the
- * offline eval prints too. Placeholder wording; design is deferred (SPEC D10).
+ * offline eval prints too. The overlay is for tuning in the room: every
+ * measurement sits next to the threshold it has to clear (SPEC D8).
  */
 
 /**
- * Message for a capture status that is not `running`.
+ * Message for a capture status that is not `running`. `running` is excluded
+ * rather than answered with an empty string: while Marcel is dancing the label
+ * belongs to the classifier, and the type says so, so the caller cannot quietly
+ * blank it.
  *
- * @param {CaptureStatus} status Capture status.
+ * @param {Exclude<CaptureStatus, 'running'>} status Capture status.
  * @param {string} [detail] Failure message, when there is one.
- * @returns {string} The message; empty for `running`.
+ * @returns {string} The message.
  */
 export function statusText(status, detail = '') {
   switch (status) {
@@ -33,8 +37,6 @@ export function statusText(status, detail = '') {
       return 'click start';
     case 'starting':
       return 'starting';
-    case 'running':
-      return '';
     case 'denied':
       return 'microphone access denied. click start to retry';
     default:
