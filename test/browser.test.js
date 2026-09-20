@@ -135,6 +135,9 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
          const stage = document.getElementById('stage');
          return { family: getComputedStyle(stage).fontFamily,
                   loaded: document.fonts.check('16px "Courier Prime"'),
+                  fetched: performance.getEntriesByType('resource')
+                    .filter((entry) => entry.name.endsWith('.woff2'))
+                    .map((entry) => entry.name),
                   width: stage.getBoundingClientRect().width,
                   height: stage.getBoundingClientRect().height };
        })()`,
@@ -143,7 +146,14 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
     // brightness in Courier New, in DejaVu, and in the Courier Prime the art
     // was approved in, and the machine at the venue may have none of them.
     assert.match(look.family, /^["']?Courier Prime["']?,/, `stage font stack is ${look.family}`);
+    // `fonts.check` answers true for a family nobody declared, so it cannot
+    // tell a shipped face from a missing @font-face. What settles it is the
+    // browser having gone and fetched the file.
     assert.equal(look.loaded, true, 'the shipped face never loaded');
+    assert.ok(
+      look.fetched.some((url) => url.endsWith('/src/courier-prime.woff2')),
+      `the page never fetched the face: ${JSON.stringify(look.fetched)}`,
+    );
     // The cell is measured once and cached, so a face that lands after the
     // first fit leaves the art sized against the wrong grid.
     assert.ok(look.width <= 1280 + 1 && look.height <= 800 + 1, 'the art overflows the window');

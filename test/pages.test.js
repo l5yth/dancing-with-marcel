@@ -83,6 +83,9 @@ describe('pages check', () => {
     assert.match(contentType('a.css'), /^text\/css/);
     assert.match(contentType('a.json'), /^application\/json/);
     assert.match(contentType('a.txt'), /^text\/plain/);
+    // The stage's own face: served as octet-stream a browser still takes it,
+    // but nothing in the checker would notice the day it stops.
+    assert.equal(contentType('a.woff2'), 'font/woff2');
     assert.equal(contentType('a.bin'), 'application/octet-stream');
   });
 

@@ -190,11 +190,13 @@ function uni(parts, mat, o) {
   };
 }
 
-/* A haze: smoke, spray, the couch. `light` is what the rasteriser puts on the
-   cell directly, falling off to nothing at the edge, so it is a lightness and
-   not the ink a flat material's `tone` is. The two run opposite ways. */
+/* A haze: smoke, spray, the couch. `light` is a lightness, put on the cell
+   directly by the rasteriser and falling off to nothing at the edge; it is not
+   the ink a flat material's `tone` is, and the two run opposite ways. The
+   material below is never shaded, because the rasteriser reads `softTone` for
+   a soft part and never calls shade() on it; `ell` just needs one. */
 const softBlob = (c, rx, ry, light, rotDeg) => {
-  const e = ell(c, rx, ry, rotDeg || 0, { tone: 1 - light, flat: true }, { soft: true });
+  const e = ell(c, rx, ry, rotDeg || 0, { tone: light, flat: true }, { soft: true });
   e.softTone = light; return e;
 };
 
@@ -461,8 +463,9 @@ function buildParts(P) {
     /* The floor stays where it is: a standing ankle sits at 0.115 and the sole
        0.055 under it, so that is the height of the line whether he is on it or
        over it. Leaving the ground only thins and dims it. */
-    /* Half a cell tall: at 0.006 the ellipse covered less than one row and
-       supersampling averaged a lightness of 0.90 down to 0.55. */
+    /* A radius of 0.0085 against a cell 0.01656 tall, so the ellipse spans one
+       whole row. At 0.006 it covered less and supersampling averaged its
+       lightness of 0.90 down to 0.55: a grey dash instead of a line. */
     o.push(ell([cx, 0.060], 0.26 * lift, 0.0085, 0,
                { tone: 0.10 + 0.5 * (1 - lift), flat: true }));
   }
@@ -533,70 +536,70 @@ const renderPose = P => rasterise(buildParts(Object.assign({}, BASE, P)));
 /* ---- poses ----------------------------------------------------------- */
 const POSES = {
   /* ---------------- dance ---------------- */
-  idle_a: { group:'dance', energy:1, beat:'down', hipY:0.868, lean:5, headTilt:-3,
+  idle_a: { group:'dance', energy:1, hipY:0.868, lean:5, headTilt:-3,
             ftL:[-0.165,0.115], ftR:[0.155,0.115], rL:[-0.075,-0.555], rR:[0.090,-0.545], hairFlick:2 },
-  idle_b: { group:'dance', energy:1, beat:'up', hipX:0.012, hipY:0.890, lean:3, headTilt:-1,
+  idle_b: { group:'dance', energy:1, hipX:0.012, hipY:0.890, lean:3, headTilt:-1,
             ftL:[-0.165,0.115], ftR:[0.155,0.115], rL:[-0.065,-0.570], rR:[0.080,-0.560], hairFlick:-3 },
 
-  sway_l: { group:'dance', energy:1, beat:'down', hipX:-0.072, hipY:0.858, lean:2, headTilt:4, headTurn:-14,
+  sway_l: { group:'dance', energy:1, hipX:-0.072, hipY:0.858, lean:2, headTilt:4, headTurn:-14,
             ftL:[-0.225,0.115], ftR:[0.145,0.118], toeR:8, rL:[-0.130,-0.530], rR:[0.165,-0.495],
             hairFlick:-9, frontLeg:'L', frontArm:'L' },
-  sway_r: { group:'dance', energy:1, beat:'down', hipX:0.075, hipY:0.858, lean:9, headTilt:-9, headTurn:14,
+  sway_r: { group:'dance', energy:1, hipX:0.075, hipY:0.858, lean:9, headTilt:-9, headTurn:14,
             ftL:[-0.145,0.118], ftR:[0.230,0.115], toeL:-8, rL:[-0.165,-0.495], rR:[0.130,-0.530], hairFlick:9 },
 
-  stomp_l: { group:'dance', energy:2, beat:'down', hipX:0.040, hipY:0.850, lean:8, headTilt:-6, mouth:0.30,
+  stomp_l: { group:'dance', energy:2, hipX:0.040, hipY:0.850, lean:8, headTilt:-6, mouth:0.30,
              ftL:[-0.110,0.400], toeL:26, ftR:[0.165,0.115], rL:[-0.255,-0.470], rR:[0.265,-0.430],
              hairFlick:-8, frontLeg:'L', frontArm:'R' },
-  stomp_r: { group:'dance', energy:2, beat:'down', hipX:-0.040, hipY:0.850, lean:2, headTilt:2, mouth:0.30,
+  stomp_r: { group:'dance', energy:2, hipX:-0.040, hipY:0.850, lean:2, headTilt:2, mouth:0.30,
              ftL:[-0.165,0.115], ftR:[0.140,0.410], toeR:26, rL:[-0.265,-0.430], rR:[0.265,-0.470], hairFlick:8 },
 
-  fist_up:  { group:'dance', energy:3, beat:'down', hipY:0.882, lean:-3, headTilt:9, headTurn:8, mouth:0.55,
+  fist_up:  { group:'dance', energy:3, hipY:0.882, lean:-3, headTilt:9, headTurn:8, mouth:0.55,
               ftL:[-0.210,0.115], ftR:[0.200,0.115], rL:[-0.100,-0.520], rR:[0.095,0.560], hairFlick:-11 },
-  fists_up: { group:'dance', energy:3, beat:'down', hipY:0.900, lean:0, headTilt:12, mouth:0.70,
+  fists_up: { group:'dance', energy:3, hipY:0.900, lean:0, headTilt:12, mouth:0.70,
               ftL:[-0.250,0.115], ftR:[0.240,0.115], rL:[-0.115,0.550], rR:[0.125,0.570], hairFlick:-14 },
 
-  pogo_crouch: { group:'dance', energy:3, beat:'up', hipY:0.655, lean:16, headTilt:-13, mouth:0.35,
+  pogo_crouch: { group:'dance', energy:3, hipY:0.655, lean:16, headTilt:-13, mouth:0.35,
                  ftL:[-0.200,0.115], ftR:[0.190,0.115], rL:[-0.270,-0.455], rR:[0.280,-0.475], hairFlick:-16 },
-  pogo_air:    { group:'dance', energy:3, beat:'down', hipY:1.125, lean:-4, headTilt:11, mouth:0.80,
+  pogo_air:    { group:'dance', energy:3, hipY:1.125, lean:-4, headTilt:11, mouth:0.80,
                  ftL:[-0.215,0.480], toeL:-24, ftR:[0.220,0.500], toeR:-24,
                  rL:[-0.120,0.535], rR:[0.130,0.555], hairFlick:22 },
 
-  bang_down: { group:'dance', energy:3, beat:'down', hipY:0.805, lean:38, headTilt:26, mouth:0.40,
+  bang_down: { group:'dance', energy:3, hipY:0.805, lean:38, headTilt:26, mouth:0.40,
                ftL:[-0.225,0.115], ftR:[0.215,0.115], rL:[-0.300,-0.450], rR:[0.310,-0.480],
                hairFlick:34, frontArm:'L' },
-  bang_up:   { group:'dance', energy:3, beat:'up', hipY:0.885, lean:-11, headTilt:-24, mouth:0.60,
+  bang_up:   { group:'dance', energy:3, hipY:0.885, lean:-11, headTilt:-24, mouth:0.60,
                ftL:[-0.220,0.115], ftR:[0.210,0.115], rL:[-0.265,-0.455], rR:[0.275,-0.470], hairFlick:-30 },
 
-  wind_1: { group:'dance', energy:3, beat:'down', hipY:0.852, lean:7, headTilt:-6,
+  wind_1: { group:'dance', energy:3, hipY:0.852, lean:7, headTilt:-6,
             ftL:[-0.250,0.115], ftR:[0.240,0.115], rL:[-0.090,-0.545], rR:[0.550,0.060], hairFlick:6 },
-  wind_2: { group:'dance', energy:3, beat:'and', hipY:0.860, lean:2, headTilt:2,
+  wind_2: { group:'dance', energy:3, hipY:0.860, lean:2, headTilt:2,
             ftL:[-0.250,0.115], ftR:[0.240,0.115], rL:[-0.090,-0.545], rR:[0.205,0.520], hairFlick:-6 },
-  wind_3: { group:'dance', energy:3, beat:'up', hipY:0.852, lean:-4, headTilt:6, headTurn:-10,
+  wind_3: { group:'dance', energy:3, hipY:0.852, lean:-4, headTilt:6, headTurn:-10,
             ftL:[-0.250,0.115], ftR:[0.240,0.115], rL:[-0.090,-0.545], rR:[-0.260,0.480], hairFlick:-14 },
-  wind_4: { group:'dance', energy:3, beat:'and', hipY:0.844, lean:12, headTilt:-10,
+  wind_4: { group:'dance', energy:3, hipY:0.844, lean:12, headTilt:-10,
             ftL:[-0.250,0.115], ftR:[0.240,0.115], rL:[-0.090,-0.545], rR:[-0.105,-0.540], hairFlick:10 },
 
-  kick:  { group:'dance', energy:3, beat:'down', hipY:0.848, lean:-9, headTilt:-4, mouth:0.40,
+  kick:  { group:'dance', energy:3, hipY:0.848, lean:-9, headTilt:-4, mouth:0.40,
            ftL:[-0.105,0.115], ftR:[0.520,0.500], toeR:14, rL:[-0.305,-0.450], rR:[0.300,0.450],
            hairFlick:-12, frontLeg:'R' },
-  twist: { group:'dance', energy:2, beat:'and', hipX:-0.028, hipY:0.852, lean:4, shSkew:0.070,
+  twist: { group:'dance', energy:2, hipX:-0.028, hipY:0.852, lean:4, shSkew:0.070,
            headTurn:20, headTilt:-6, ftL:[-0.185,0.118], toeL:-20, ftR:[0.175,0.115], toeR:18,
            rL:[0.250,-0.450], rR:[0.335,-0.400], hairFlick:12 },
 
-  strut_1: { group:'dance', energy:2, beat:'down', hipX:0.018, hipY:0.852, lean:11, headTilt:-7, headTurn:10,
+  strut_1: { group:'dance', energy:2, hipX:0.018, hipY:0.852, lean:11, headTilt:-7, headTurn:10,
              ftL:[-0.290,0.140], toeL:16, ftR:[0.260,0.115], rL:[-0.165,-0.490], rR:[0.215,-0.460],
              hairFlick:-7, frontLeg:'R' },
-  strut_2: { group:'dance', energy:2, beat:'up', hipX:-0.018, hipY:0.852, lean:11, headTilt:-5, headTurn:-8,
+  strut_2: { group:'dance', energy:2, hipX:-0.018, hipY:0.852, lean:11, headTilt:-5, headTurn:-8,
              ftL:[-0.265,0.115], ftR:[0.285,0.145], toeR:-16, rL:[-0.215,-0.460], rR:[0.170,-0.490],
              hairFlick:7, frontLeg:'L', frontArm:'L' },
 
-  point: { group:'dance', energy:2, beat:'down', hipY:0.856, lean:15, headTilt:-11, headTurn:16, mouth:0.45,
+  point: { group:'dance', energy:2, hipY:0.856, lean:15, headTilt:-11, headTurn:16, mouth:0.45,
            ftL:[-0.240,0.115], ftR:[0.215,0.118], rL:[-0.120,-0.520], rR:[0.555,0.095],
            fistR:'open', hairFlick:-10 },
-  sing:  { group:'dance', energy:2, beat:'down', hipY:0.862, lean:9, headTilt:-8, headTurn:6, mouth:0.85,
+  sing:  { group:'dance', energy:2, hipY:0.862, lean:9, headTilt:-8, headTurn:6, mouth:0.85,
            ftL:[-0.205,0.115], ftR:[0.195,0.115], rL:[-0.440,-0.320],
            hR:[0.350,1.450], elbR:[0.520,1.190], mic:'R', fistL:'open', hairFlick:-5 },
-  sneer: { group:'dance', energy:1, beat:'up', hipX:0.028, hipY:0.872, lean:-6, headTilt:-13, headTurn:-12,
+  sneer: { group:'dance', energy:1, hipX:0.028, hipY:0.872, lean:-6, headTilt:-13, headTurn:-12,
            mouth:0.15, ftL:[-0.185,0.115], ftR:[0.180,0.115], rL:[-0.085,-0.545], rR:[0.310,-0.300],
            fistR:'open', hairFlick:5 },
 

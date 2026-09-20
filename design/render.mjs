@@ -146,7 +146,7 @@ ${frames}
 });
 
 /**
- * What each frame is: its group, how much energy it carries, and where it falls in the bar.
+ * What each frame is: the group it belongs to and how much energy it carries.
  *
  * @type {Readonly<Record<string, FrameMeta>>}
  */
