@@ -29,6 +29,7 @@ describe('config', () => {
       minBass: 0.15,
       minFlux: 0.1,
       minOnsets: 4,
+      minLevelSwingDb: 0.3,
       timbreWindowMs: 1500,
       floorRiseDbPerSec: 3,
       musicEnterMs: 1000,
@@ -36,7 +37,7 @@ describe('config', () => {
       levelWindowMs: 400,
       bpmMin: 95,
       bpmMax: 190,
-      tempoMinConfidence: 0.3,
+      tempoMinConfidence: 0.15,
       defaultBpm: 140,
       bpmSettleMs: 3000,
       driveRangeDb: 18,
@@ -54,8 +55,8 @@ describe('config', () => {
     assert.equal(tuned.bpmMin, 80);
     assert.equal(tuned.bpmMax, 160);
     assert.equal(tuned.tempoMinConfidence, 0.5);
-    assert.equal(parseConfig('?tempoMinConfidence=1.5').tempoMinConfidence, 0.3);
-    assert.equal(parseConfig('?tempoMinConfidence=-0.1').tempoMinConfidence, 0.3);
+    assert.equal(parseConfig('?tempoMinConfidence=1.5').tempoMinConfidence, 0.15);
+    assert.equal(parseConfig('?tempoMinConfidence=-0.1').tempoMinConfidence, 0.15);
   });
 
   it('C11: a tempo range in the wrong order falls back to the defaults', () => {

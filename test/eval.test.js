@@ -204,7 +204,9 @@ describe('eval', () => {
   });
 
   it('C13: a tunable given on the command line reaches the pipeline', () => {
-    const audio = concat(room(2, DECODE_RATE), drums(120, 14, DECODE_RATE));
+    // Long enough that the second or two it takes to be sure of a song does
+    // not decide whether the fixture counts as mostly music.
+    const audio = concat(room(2, DECODE_RATE), drums(120, 24, DECODE_RATE));
     const loose = run(['a.mp3'], { 'a.mp3': audio });
     const strict = run(['a.mp3', '--musicOverFloorDb', '60', '--breakUnderFloorDb', '59'], {
       'a.mp3': audio,

@@ -39,11 +39,12 @@ Add parameters to the URL:
 - `?musicEnterMs=1000&breakHoldMs=2000` sets the switch delays
 - `?maxFlatness=0.6` sets how noise-like the sound may be
 - `?minBass=0.15&minOnsets=4&minFlux=0.1` set what counts as a pulse
+- `?minLevelSwingDb=0.3` sets how far the level must move; raise it if he dances to a machine
 - `?levelWindowMs=400&timbreWindowMs=1500` set how far back level and timbre
   are read
 - `?floorRiseDbPerSec=3` sets how fast the room level is relearned
 - `?bpmMin=95&bpmMax=190` sets the tempo range
-- `?tempoMinConfidence=0.3` sets how sure a tempo must be to be shown
+- `?tempoMinConfidence=0.15` sets how sure a tempo must be to be shown
 - `?defaultBpm=140&bpmSettleMs=3000` set the dance tempo before one is
   detected, and how long a new one must hold
 - `?driveRangeDb=18&sceneHoldMs=12000` set how loud counts as full energy, and

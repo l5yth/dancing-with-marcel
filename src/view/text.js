@@ -61,6 +61,7 @@ export function overlayText(event, config, scene) {
     `flatness ${event.flatness.toFixed(2)}   need at most ${config.maxFlatness}`,
     `bass     ${event.bass.toFixed(2)}   need at least ${config.minBass}`,
     `onsets   ${event.onsets} of them, loudest ${event.flux.toFixed(2)}   need ${config.minOnsets} over ${config.minFlux}`,
+    `swing    ${event.swing.toFixed(2)} dB   need at least ${config.minLevelSwingDb}`,
     `tempo    ${bpm} bpm at ${event.confidence.toFixed(2)}   need ${config.tempoMinConfidence}`,
     `dance    ${event.danceBpm.toFixed(1)} bpm${event.locked ? '' : ' (default)'}`,
   ].join('\n');

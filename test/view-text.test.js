@@ -40,6 +40,7 @@ describe('view text', () => {
       bass: 0.71,
       flux: 1.23,
       onsets: 37,
+      swing: 1.284,
       state: 'music',
       bpm: 179.6,
       confidence: 0.44,
@@ -52,8 +53,11 @@ describe('view text', () => {
     assert.match(lines[2], /^flatness 0\.42\s+need at most 0\.6$/);
     assert.match(lines[3], /^bass\s+0\.71\s+need at least 0\.15$/);
     assert.match(lines[4], /^onsets\s+37 of them, loudest 1\.23\s+need 4 over 0\.1$/);
-    assert.match(lines[5], /^tempo\s+180 bpm at 0\.44\s+need 0\.3$/);
-    assert.equal(lines[6], 'dance    179.6 bpm');
+    // The fourth question, shown like the rest: it is the one that tells a
+    // fridge from a song, so it is the one to read in a calm room.
+    assert.match(lines[5], /^swing\s+1\.28 dB\s+need at least 0\.3$/);
+    assert.match(lines[6], /^tempo\s+180 bpm at 0\.44\s+need 0\.15$/);
+    assert.equal(lines[7], 'dance    179.6 bpm');
   });
 
   it('unit: the overlay says when no tempo has been found and the dance speed is a guess', () => {
@@ -66,6 +70,7 @@ describe('view text', () => {
       bass: 0,
       flux: 0,
       onsets: 0,
+      swing: 0,
       state: 'break',
       bpm: null,
       confidence: 0,
@@ -74,7 +79,8 @@ describe('view text', () => {
     };
     const lines = overlayText(event, DEFAULTS, 'smoke').split('\n');
     assert.match(lines[0], /^state\s+break\s+scene smoke$/);
-    assert.match(lines[5], /^tempo\s+none bpm at 0\.00/);
-    assert.equal(lines[6], 'dance    140.0 bpm (default)');
+    assert.match(lines[5], /^swing\s+0\.00 dB/);
+    assert.match(lines[6], /^tempo\s+none bpm at 0\.00/);
+    assert.equal(lines[7], 'dance    140.0 bpm (default)');
   });
 });

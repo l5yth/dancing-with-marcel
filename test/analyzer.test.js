@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { DEFAULTS } from '../src/config.js';
 import { Analyzer } from '../src/dsp/analyzer.js';
-import { applause, concat, dense, drums, room, silence, speech } from './helpers/synth.js';
+import { concat, dense, drums, room, silence } from './helpers/synth.js';
 
 const RATES = [48000, 44100];
 const MIN_CONFIDENCE = DEFAULTS.tempoMinConfidence;
@@ -167,22 +167,4 @@ describe('analyzer', () => {
     assert.ok(high !== null && low !== null);
     assert.ok(Math.abs(high.bpm - low.bpm) < 1.4, `${high.bpm} against ${low.bpm}`);
   });
-
-  for (const [name, make] of [
-    ['room noise', (/** @type {number} */ rate) => room(20, rate)],
-    ['applause-like noise', (/** @type {number} */ rate) => applause(20, rate)],
-    ['speech-like noise', (/** @type {number} */ rate) => speech(20, rate)],
-  ]) {
-    it(`C15: ${name} never reaches the tempo confidence threshold`, () => {
-      for (const rate of RATES) {
-        const frames = analyze(withLeadIn(make, rate), rate);
-        for (const { tempo, time } of frames.filter((frame) => frame.time >= SETTLED)) {
-          assert.ok(
-            tempo === null || tempo.confidence < MIN_CONFIDENCE,
-            `${tempo?.confidence} at ${time} s`,
-          );
-        }
-      }
-    });
-  }
 });

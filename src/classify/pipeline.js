@@ -131,6 +131,7 @@ export class Pipeline {
       bass: this.gate.bass,
       flux: this.gate.flux,
       onsets: this.gate.onsets,
+      swing: this.gate.swing,
       state,
       bpm: frame.tempo?.bpm ?? null,
       confidence: frame.tempo?.confidence ?? 0,

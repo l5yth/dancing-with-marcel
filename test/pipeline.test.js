@@ -30,7 +30,11 @@ const RATE = 44100;
  */
 function pipeline(overrides = {}) {
   return new Pipeline({
-    config: Object.freeze({ ...DEFAULTS, ...overrides }),
+    // The frames below hold one level for seconds, to examine the tempo rules
+    // and nothing else. Under the defaults a constant level is never music,
+    // so the fourth question is switched off here; the audio fixtures in
+    // classifier.test.js keep it on.
+    config: Object.freeze({ ...DEFAULTS, minLevelSwingDb: 0, ...overrides }),
     sampleRate: RATE,
   });
 }

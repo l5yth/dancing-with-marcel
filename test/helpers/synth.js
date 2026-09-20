@@ -139,6 +139,150 @@ export function silence(seconds, sampleRate) {
 }
 
 /**
+ * A quiet room: hiss at -74 dBFS RMS, low enough that the learned floor sinks
+ * to its clamp. This is a calm flat at night, not the -60 dBFS of `room`.
+ *
+ * @param {number} seconds Duration.
+ * @param {number} sampleRate Sample rate in Hz.
+ * @param {() => number} [rand] Random source.
+ * @returns {Float32Array} The quiet room.
+ */
+export function quietRoom(seconds, sampleRate, rand = mulberry32(SEED)) {
+  return scaleToDb(noise(Math.round(seconds * sampleRate), rand), -74);
+}
+
+/**
+ * Mains hum at about -50 dBFS: 50 Hz with its octave, over a little hiss. It is
+ * what a calm room actually contains, a fridge or a fan or a laptop, and it is
+ * loud against a sunken floor, very tonal, and all bass.
+ *
+ * @param {number} seconds Duration.
+ * @param {number} sampleRate Sample rate in Hz.
+ * @param {() => number} [rand] Random source.
+ * @returns {Float32Array} The hum.
+ */
+export function hum(seconds, sampleRate, rand = mulberry32(SEED)) {
+  const length = Math.round(seconds * sampleRate);
+  const out = new Float32Array(length);
+  for (let index = 0; index < length; index += 1) {
+    const t = index / sampleRate;
+    out[index] =
+      0.003 * Math.sin(2 * Math.PI * 50 * t) +
+      0.0015 * Math.sin(2 * Math.PI * 100 * t) +
+      (rand() * 2 - 1) * 0.0003;
+  }
+  return out;
+}
+
+/**
+ * A band rather than a drum machine, at -20 dBFS RMS: the same kit as `drums`,
+ * but played by a person. Every hit lands a few milliseconds off the grid and
+ * at its own strength, there is a fill at the end of every fourth bar, a
+ * sustained chord sits under it, and a voice throws bursts wherever it likes.
+ * The onset envelope of a drum machine correlates with itself almost
+ * perfectly; this one does it about as well as a record does, which is the
+ * point: a tempo threshold tuned on `drums` has never met music.
+ *
+ * @param {number} bpm Beats per minute.
+ * @param {number} seconds Duration.
+ * @param {number} sampleRate Sample rate in Hz.
+ * @param {() => number} [rand] Random source.
+ * @returns {Float32Array} The band.
+ */
+export function band(bpm, seconds, sampleRate, rand = mulberry32(SEED)) {
+  const length = Math.round(seconds * sampleRate);
+  const mix = new Float32Array(length);
+  const beat = (60 / bpm) * sampleRate;
+  const add = (
+    /** @type {number} */ start,
+    /** @type {Float32Array} */ hit,
+    /** @type {number} */ gain,
+  ) => {
+    for (let index = 0; index < hit.length && start + index < length; index += 1) {
+      if (start + index >= 0) {
+        mix[start + index] += gain * hit[index];
+      }
+    }
+  };
+  /** A hit lands up to 20 ms early or late, as hands do. */
+  const loose = () => Math.round((rand() * 2 - 1) * 0.02 * sampleRate);
+  const kick = burst(0.08, 0.025, sampleRate, (index) =>
+    Math.sin((2 * Math.PI * 60 * index) / sampleRate),
+  );
+  const snare = () => {
+    const grit = highpass(noise(Math.round(0.12 * sampleRate), rand), 200, sampleRate);
+    return burst(0.12, 0.03, sampleRate, (index) => 0.8 * grit[index]);
+  };
+  for (let count = 0; Math.round(count * beat) < length; count += 1) {
+    const start = Math.round(count * beat);
+    add(start + loose(), count % 2 === 0 ? kick : snare(), 0.55 + 0.45 * rand());
+    // The fill: sixteenths through the last beat of every fourth bar.
+    if (count % 16 === 15) {
+      for (const step of [0.25, 0.5, 0.75]) {
+        add(Math.round(start + step * beat) + loose(), snare(), 0.5 + 0.4 * rand());
+      }
+    }
+  }
+  // The chord under it: three partials, so there is something tonal to hear.
+  for (let index = 0; index < length; index += 1) {
+    const t = index / sampleRate;
+    mix[index] +=
+      0.05 * Math.sin(2 * Math.PI * 196 * t) +
+      0.04 * Math.sin(2 * Math.PI * 247 * t) +
+      0.03 * Math.sin(2 * Math.PI * 294 * t);
+  }
+  // The voice: bursts at no particular time, about eight a second, and as
+  // loud as the kit, because on a punk record it is.
+  for (let at = 0; at < length; at += Math.round((0.04 + 0.17 * rand()) * sampleRate)) {
+    const pitch = 300 + 500 * rand();
+    add(
+      at,
+      burst(0.09, 0.03, sampleRate, (index) =>
+        Math.sin((2 * Math.PI * pitch * index) / sampleRate),
+      ),
+      0.6 + 0.6 * rand(),
+    );
+  }
+  return scaleToDb(mix, -20);
+}
+
+/**
+ * Pass audio through a phone speaker in a room and into a laptop microphone:
+ * no low end, two early reflections, a long way down, and the room on top.
+ * Real music reaches the classifier like this, never as a clean file.
+ *
+ * @param {Float32Array} audio The clean source.
+ * @param {number} sampleRate Sample rate in Hz.
+ * @param {() => number} [rand] Random source.
+ * @returns {Float32Array} What the microphone hears.
+ */
+export function phoneInRoom(audio, sampleRate, rand = mulberry32(SEED)) {
+  // One-pole high-pass at 500 Hz: a phone speaker has nothing below it.
+  const alpha = 1 / (1 + (2 * Math.PI * 500) / sampleRate);
+  const high = new Float32Array(audio.length);
+  for (let index = 1; index < audio.length; index += 1) {
+    high[index] = alpha * (high[index - 1] + audio[index] - audio[index - 1]);
+  }
+  // Two early reflections smear every onset, as a wall and a desk do.
+  const taps = [
+    [Math.round(0.04 * sampleRate), 0.4],
+    [Math.round(0.07 * sampleRate), 0.25],
+  ];
+  const heard = new Float32Array(audio.length);
+  for (let index = 0; index < audio.length; index += 1) {
+    let sample = high[index];
+    for (const [delay, gain] of taps) {
+      if (index >= delay) {
+        sample += gain * high[index - delay];
+      }
+    }
+    heard[index] = sample;
+  }
+  const quiet = scaleToDb(heard, -42);
+  return quiet.map((sample) => sample + (rand() * 2 - 1) * 0.0008);
+}
+
+/**
  * White noise at -60 dBFS RMS: the room before the music.
  *
  * @param {number} seconds Duration.

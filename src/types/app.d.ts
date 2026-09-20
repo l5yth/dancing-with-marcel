@@ -61,6 +61,8 @@ interface Config {
   minFlux: number;
   /** How many onsets the timbre window needs before the audio counts as moving. */
   minOnsets: number;
+  /** How far the audible level must spread over the timbre window, in dB. */
+  minLevelSwingDb: number;
   /** How far back tonality and bass are read, in milliseconds. */
   timbreWindowMs: number;
   /** How fast the room floor climbs back towards a louder room, in dB per second. */
@@ -142,6 +144,8 @@ interface PipelineEvent {
   flux: number;
   /** How many audible hops of the timbre window carry an onset. */
   onsets: number;
+  /** Spread of the audible level over the timbre window, in dB. */
+  swing: number;
   /** Classifier state. */
   state: State;
   /** Latest tempo in beats per minute, or `null` while there is none. */

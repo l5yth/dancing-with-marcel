@@ -25,7 +25,19 @@ import {
 import { debugLabel } from '../src/classify/label.js';
 import { Pipeline } from '../src/classify/pipeline.js';
 import { DEFAULTS } from '../src/config.js';
-import { applause, concat, dense, drums, room, silence, speech } from './helpers/synth.js';
+import {
+  applause,
+  band,
+  concat,
+  dense,
+  drums,
+  hum,
+  phoneInRoom,
+  quietRoom,
+  room,
+  silence,
+  speech,
+} from './helpers/synth.js';
 
 const RATE = 44100;
 
@@ -59,11 +71,170 @@ function run(audio, { chunk = 8192, sampleRate = RATE, config = {} } = {}) {
   return { events, changes, labels };
 }
 
+/**
+ * The defaults with the fourth question switched off. For unit tests that hold
+ * the level constant in order to examine one of the other three: under the
+ * defaults nothing with a constant level is ever music, which is the point of
+ * the question and would make every such test about it instead. The fixtures
+ * that run real audio through the pipeline keep the defaults.
+ */
+const STILL = Object.freeze({ ...DEFAULTS, minLevelSwingDb: 0 });
+
 /** Three seconds of room noise, the lead-in of every music fixture. */
 const leadIn = (/** @type {number} */ rate = RATE) => room(3, rate);
 
 /** Seconds of lead-in before a fixture starts. */
 const LEAD = 3;
+
+/**
+ * A frame that answers yes to every question: loud, tonal, pulsing, and with a
+ * level that swells over 1.2 s. Slower than the 400 ms the level peak looks
+ * back, because anything faster is flattened into a constant and does not move.
+ *
+ * @param {number} ms Milliseconds since the fixture began.
+ * @returns {AnalyzerFrame} The frame.
+ */
+function lively(ms) {
+  return {
+    time: ms / 1000,
+    levelDb: -23 + 3 * Math.sin((2 * Math.PI * ms) / 1200),
+    flux: 1,
+    flatness: 0.2,
+    bass: 0.5,
+    tempo: null,
+  };
+}
+
+describe('a calm room', () => {
+  it('C20: a hum in a quiet room is not music, however far the floor has sunk', () => {
+    // In a calm flat the learned floor sinks to its clamp, and then anything
+    // audible at all is sixteen decibels over it. A fridge or a fan is also
+    // very tonal and all bass, so it answered yes to all three questions and
+    // Marcel danced to it within a second. What it does not do is move.
+    const { events, changes } = run(concat(quietRoom(20, RATE), hum(30, RATE)));
+    const onset = events.filter((event) => event.time > 20.2 && event.time < 21.2);
+    assert.ok(onset.length > 50);
+    assert.ok(
+      onset.every((event) => event.levelDb > event.floorDb + DEFAULTS.musicOverFloorDb),
+      'the hum is not loud against the floor as it starts, so the fixture proves nothing',
+    );
+    // A sound that starts is not a sound that moves: the two hops straddling
+    // its onset must not hold the swing over the bar for long enough to count.
+    const lively = events.filter(
+      (event) => event.time > 20 && event.swing >= DEFAULTS.minLevelSwingDb,
+    );
+    assert.ok(
+      lively.length * (512 / RATE) * 1000 < DEFAULTS.musicEnterMs / 2,
+      `the onset of the hum read as movement for ${lively.length} hops`,
+    );
+    // And the floor goes and meets it, instead of sitting at its clamp.
+    const last = /** @type {PipelineEvent} */ (events.at(-1));
+    assert.ok(
+      last.floorDb > last.levelDb - 1,
+      `after thirty seconds of hum the floor is at ${last.floorDb.toFixed(1)} under a level of ${last.levelDb.toFixed(1)}`,
+    );
+    assert.deepEqual(
+      changes.map((event) => `${event.state} at ${event.time.toFixed(1)} s`),
+      [],
+      'he danced to the fridge',
+    );
+  });
+
+  it('C20: the level of music moves and the level of a machine does not', () => {
+    // The fourth question, measured rather than assumed: the swing is the
+    // spread of the audible level over the timbre window.
+    const swingOf = (/** @type {Float32Array} */ audio) => {
+      const swings = run(audio)
+        .events.filter((event) => event.time > 8)
+        .map((event) => event.swing)
+        .sort((a, b) => a - b);
+      return { low: swings[Math.floor(swings.length * 0.1)], high: swings.at(-1) };
+    };
+    const machine = swingOf(concat(quietRoom(4, RATE), hum(20, RATE)));
+    const music = swingOf(concat(leadIn(), phoneInRoom(band(140, 20, RATE), RATE)));
+    assert.ok(
+      machine.high < DEFAULTS.minLevelSwingDb,
+      `a hum in full flow swings ${machine.high?.toFixed(2)} dB, over the ${DEFAULTS.minLevelSwingDb} dB bar`,
+    );
+    assert.ok(
+      music.low >= DEFAULTS.minLevelSwingDb,
+      `a band through a phone swings only ${music.low?.toFixed(2)} dB in its calmest tenth`,
+    );
+  });
+
+  it('C20: the floor keeps learning until a song has actually begun', () => {
+    // It used to stop the moment the audio looked like music, before the call
+    // had held for musicEnterMs. A wrong first impression then froze the very
+    // evidence that would have overturned it: across twenty seconds of hum the
+    // floor sat at its clamp instead of climbing to meet the sound.
+    // A long entry time, so there is room to look like music for seconds
+    // without being declared music.
+    const classifier = new Classifier(Object.freeze({ ...DEFAULTS, musicEnterMs: 60000 }));
+    for (let ms = 0; ms < 4000; ms += 10) {
+      classifier.update(lively(ms), 10);
+    }
+    assert.equal(classifier.musicLike, true, 'the fixture has to look like music');
+    assert.equal(classifier.state, 'break', 'and must not have been declared music yet');
+    assert.ok(
+      classifier.floorDb > FLOOR_START_DB,
+      `the floor sat at ${classifier.floorDb} while the call was only provisional`,
+    );
+  });
+
+  it('C20: once a song has begun the floor holds still behind it', () => {
+    // The other half, so the fix cannot overshoot: a song under way must not
+    // drag the floor up after itself, or a long loud set would end in a break.
+    const classifier = new Classifier(DEFAULTS);
+    for (let ms = 0; ms < 4000; ms += 10) {
+      classifier.update(lively(ms), 10);
+    }
+    assert.equal(classifier.state, 'music');
+    const held = classifier.floorDb;
+    for (let ms = 4000; ms < 24000; ms += 10) {
+      classifier.update(lively(ms), 10);
+    }
+    assert.equal(classifier.floorDb, held, 'the floor climbed during the song');
+  });
+});
+
+describe('the tempo of real music', () => {
+  for (const bpm of [110, 170]) {
+    it(`C20: a band at ${bpm} bpm through a phone in a room is locked, and read correctly`, () => {
+      // tempoMinConfidence was set against a drum machine, which scores 0.97.
+      // A record scores about 0.2 and a record through a phone speaker in a
+      // room about 0.13, so at 0.3 it never locked and he danced at the 140
+      // default whatever was playing. Not 140 here, or the default would pass.
+      const { events } = run(concat(leadIn(), phoneInRoom(band(bpm, 60, RATE), RATE)));
+      const last = /** @type {PipelineEvent} */ (events.at(-1));
+      assert.equal(last.state, 'music');
+      assert.equal(last.locked, true, `never locked; still dancing at ${last.danceBpm}`);
+      assert.ok(
+        Math.abs(last.danceBpm - bpm) / bpm <= 0.03,
+        `dancing at ${last.danceBpm.toFixed(1)} to a ${bpm} bpm band`,
+      );
+    });
+  }
+
+  for (const [id, name, make] of [
+    ['C15', 'room noise', () => room(40, RATE)],
+    ['C15', 'applause-like noise', () => applause(40, RATE)],
+    ['C15', 'speech-like noise', () => speech(40, RATE)],
+    ['C20', 'a hum in a quiet room', () => concat(quietRoom(20, RATE), hum(30, RATE))],
+  ]) {
+    it(`${id}: ${name} never sets the dance tempo`, () => {
+      // What the old threshold was protecting, stated as itself. Noise is
+      // allowed to look periodic to the estimator, and speech does, more than
+      // some music; it is not allowed to become the tempo he dances at. A
+      // tempo only settles inside a music span, and none of these opens one.
+      const { events } = run(make());
+      assert.ok(
+        events.every((event) => !event.locked),
+        'a tempo was locked from noise',
+      );
+      assert.ok(events.every((event) => event.danceBpm === DEFAULTS.defaultBpm));
+    });
+  }
+});
 
 describe('classifier', () => {
   it('C1: silence stays break, with no transitions', () => {
@@ -126,7 +297,7 @@ describe('classifier', () => {
         'nothing is claimed before the music starts',
       );
       const locked = events.findIndex((event) => event.locked);
-      assert.ok(locked > before, 'the tempo locks after the music starts, not before');
+      assert.ok(locked >= before, 'a tempo was claimed before the music started');
       assert.ok(
         labels.slice(before, locked).every((label) => label === 'music'),
         'between entering and locking the label is exactly music',
@@ -179,7 +350,7 @@ describe('classifier', () => {
       'nothing is claimed before the music starts',
     );
     const locked = events.findIndex((event) => event.locked);
-    assert.ok(locked > entryIndex, 'the tempo locks after the music starts, not before');
+    assert.ok(locked >= entryIndex, 'a tempo was claimed before the music started');
     assert.ok(
       labels.slice(entryIndex, locked).every((label) => label === 'music'),
       'between entering and locking the label is exactly music',
@@ -322,7 +493,7 @@ describe('classifier', () => {
   it('C6: entering needs more level than staying does, which is what stops the flapping', () => {
     // A song that sits between the two thresholds keeps dancing but could not
     // have started; one gate for both would flap on exactly this passage.
-    const config = { ...DEFAULTS, musicOverFloorDb: 20, breakUnderFloorDb: 6 };
+    const config = { ...STILL, musicOverFloorDb: 20, breakUnderFloorDb: 6 };
     const between = -60 + 10;
     const quiet = new Classifier(config);
     for (let elapsed = 0; elapsed < 8000; elapsed += 10) {
@@ -375,7 +546,7 @@ describe('classifier', () => {
 
   it('C1: one tonal moment in the window is enough, which is what lets music through', () => {
     // The mirror of the check above: mostly flat, one clear moment per window.
-    const classifier = new Classifier(DEFAULTS);
+    const classifier = new Classifier(STILL);
     for (let beat = 0; beat < 400; beat += 1) {
       for (let hop = 0; hop < 10; hop += 1) {
         classifier.update(
@@ -433,15 +604,5 @@ describe('classifier', () => {
     }
     assert.equal(loud.floorDb, FLOOR_MAX_DB);
     assert.equal(FLOOR_MAX_DB, -25, 'SPEC D10 states the floor is clamped to -25 dBFS');
-  });
-
-  it('unit: the floor stops climbing while the audio looks like music', () => {
-    const classifier = new Classifier(DEFAULTS);
-    const music = { time: 0, levelDb: -20, flux: 1, flatness: 0.1, bass: 0.9, tempo: null };
-    for (let index = 0; index < 3000; index += 1) {
-      classifier.update(music, 10);
-    }
-    assert.equal(classifier.state, 'music');
-    assert.equal(classifier.floorDb, FLOOR_START_DB, 'the floor never moved');
   });
 });

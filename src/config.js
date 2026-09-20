@@ -38,6 +38,14 @@ const PARAMS = {
   minFlux: { default: 0.1, min: 0, max: 10 },
   /** How many onsets the timbre window needs before the audio counts as moving. */
   minOnsets: { default: 4, min: 1, max: 200 },
+  /**
+   * How far the audible level must spread over the timbre window, from its
+   * 10th to its 90th percentile, in dB. Music moves and a machine does not: a
+   * fridge measures 0.00, and the calmest twentieth of the calmest record
+   * measured 0.60. It is a spread and not a level, so it needs no setting for
+   * the room or the microphone.
+   */
+  minLevelSwingDb: { default: 0.3, min: 0, max: 20 },
   /** How far back tonality and bass are read, in milliseconds. */
   timbreWindowMs: { default: 1500, min: 100, max: 10000 },
   /** How fast the room floor climbs back towards a louder room, in dB per second. */
@@ -52,8 +60,14 @@ const PARAMS = {
   bpmMin: { default: 95, min: 40, max: 200 },
   /** Fastest tempo the estimator reports, in beats per minute. */
   bpmMax: { default: 190, min: 60, max: 400 },
-  /** Tempo confidence below which no tempo is shown, from 0 to 1. */
-  tempoMinConfidence: { default: 0.3, min: 0, max: 1 },
+  /**
+   * Tempo confidence below which no tempo is shown, from 0 to 1. A drum machine
+   * scores 0.97, a record about 0.2, and a record through a phone speaker in a
+   * room about 0.13, all three read correctly. Speech scores 0.14, so this does
+   * not tell music from noise and is not asked to: a tempo only settles inside
+   * a music span, which noise never opens.
+   */
+  tempoMinConfidence: { default: 0.15, min: 0, max: 1 },
   /** Tempo Marcel dances at before any has been detected, in beats per minute. */
   defaultBpm: { default: 140, min: 40, max: 400 },
   /** How long a new tempo must hold before the dance follows it, in milliseconds. */
