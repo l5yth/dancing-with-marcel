@@ -39,6 +39,9 @@ describe('config', () => {
       tempoMinConfidence: 0.3,
       defaultBpm: 140,
       bpmSettleMs: 3000,
+      driveRangeDb: 18,
+      sceneHoldMs: 12000,
+      breakFrameMs: 2400,
     });
   });
 

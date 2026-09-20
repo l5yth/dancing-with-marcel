@@ -17,16 +17,29 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { Capture, CONSTRAINTS, PROCESSOR_NAME } from '../src/audio/capture.js';
-import { createAudioStack, namedError } from './helpers/fakes.js';
+import {
+  Capture,
+  CONSTRAINTS,
+  FIRST_RETRY_MS,
+  MAX_RETRY_MS,
+  PROCESSOR_NAME,
+  WATCHDOG_MS,
+} from '../src/audio/capture.js';
+import {
+  createAudioStack,
+  createFakeScreen,
+  createFakeTimers,
+  namedError,
+} from './helpers/fakes.js';
 
 /**
  * Build a capture on a fresh fake stack.
  *
  * @returns {object} The capture, the stack, and the recorded callbacks.
  */
-function setup() {
+function setup({ screen = createFakeScreen() } = {}) {
   const stack = createAudioStack();
+  const timers = createFakeTimers();
   const frames = [];
   const statuses = [];
   const capture = new Capture({
@@ -34,10 +47,23 @@ function setup() {
     AudioContext: stack.AudioContext,
     AudioWorkletNode: stack.AudioWorkletNode,
     workletUrl: new URL('../src/audio/worklet.js', import.meta.url),
+    timers,
+    visibility: screen.visibility,
+    wakeLock: screen.wakeLock,
     onFrame: (frame, sampleRate) => frames.push({ frame, sampleRate }),
     onStatus: (status, detail) => statuses.push({ status, detail }),
   });
-  return { stack, capture, frames, statuses };
+  return { stack, capture, frames, statuses, timers, screen };
+}
+
+/**
+ * Deliver one frame, as the worklet would.
+ *
+ * @param {any} stack The fake audio stack.
+ * @returns {void}
+ */
+function deliver(stack) {
+  stack.log.nodes.at(-1).port.onmessage({ data: new Float32Array(512) });
 }
 
 describe('capture', () => {
@@ -165,6 +191,132 @@ describe('capture', () => {
     stack.control.rejectMedia = 'boom';
     await capture.start();
     assert.deepEqual(statuses.at(-1), { status: 'error', detail: 'boom' });
+  });
+
+  it('C12: a track that ends restarts the capture after the first wait', async () => {
+    const { stack, capture, timers, statuses } = setup();
+    await capture.start();
+    stack.log.streams[0].track.onended();
+    assert.equal(capture.status, 'error');
+    assert.deepEqual(statuses.at(-1), {
+      status: 'error',
+      detail: 'the microphone was disconnected',
+    });
+    assert.equal(stack.log.streams[0].stopped, 1, 'the dead stream is let go');
+
+    assert.equal(stack.log.contexts.length, 1, 'nothing yet');
+    timers.advance(FIRST_RETRY_MS);
+    await Promise.resolve();
+    assert.equal(stack.log.contexts.length, 2, 'it tried again');
+  });
+
+  it('C12: the wait doubles to a ceiling while the microphone stays away', async () => {
+    const { stack, capture, timers } = setup();
+    stack.control.rejectMedia = new Error('no device');
+    await capture.start();
+    /** @type {number[]} */
+    const waits = [];
+    for (let round = 0; round < 8; round += 1) {
+      const pending = timers.pending.at(-1);
+      waits.push(pending.at - timers.now());
+      timers.advance(pending.at - timers.now());
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+    assert.deepEqual(waits.slice(0, 5), [1000, 2000, 4000, 8000, 10000]);
+    assert.ok(waits.every((wait) => wait <= MAX_RETRY_MS));
+  });
+
+  it('C12: a retry that works resets the wait', async () => {
+    const { stack, capture, timers } = setup();
+    stack.control.rejectMedia = new Error('no device');
+    await capture.start();
+    timers.advance(FIRST_RETRY_MS);
+    await Promise.resolve();
+    assert.ok(capture.retryMs > FIRST_RETRY_MS);
+
+    stack.control.rejectMedia = null;
+    timers.advance(MAX_RETRY_MS);
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(capture.status, 'running');
+    assert.equal(capture.retryMs, FIRST_RETRY_MS);
+  });
+
+  it('C12: frames that stop arriving restart the capture, and frames that keep coming do not', async () => {
+    const { stack, capture, timers } = setup();
+    await capture.start();
+    for (let elapsed = 0; elapsed < WATCHDOG_MS * 3; elapsed += WATCHDOG_MS / 2) {
+      deliver(stack);
+      timers.advance(WATCHDOG_MS / 2);
+    }
+    assert.equal(capture.status, 'running', 'a fed capture is left alone');
+
+    timers.advance(WATCHDOG_MS);
+    assert.equal(capture.status, 'error');
+    assert.equal(capture.deps.onStatus.length, 2);
+    timers.advance(FIRST_RETRY_MS);
+    await Promise.resolve();
+    assert.equal(stack.log.contexts.length, 2);
+  });
+
+  it('C12: a capture that has already been lost is not lost twice', async () => {
+    const { stack, capture, statuses } = setup();
+    await capture.start();
+    stack.log.streams[0].track.onended();
+    const after = statuses.length;
+    capture.lost('again');
+    assert.equal(statuses.length, after, 'nothing more was said');
+    assert.equal(stack.log.streams[0].stopped, 1, 'and the stream was stopped once');
+  });
+
+  it('C12: a refusal is not retried, since it was the operator saying no', async () => {
+    const { stack, capture, timers } = setup();
+    stack.control.rejectMedia = namedError('NotAllowedError', 'Permission denied');
+    await capture.start();
+    assert.equal(timers.pending.length, 0);
+    timers.advance(MAX_RETRY_MS * 10);
+    assert.equal(stack.log.contexts.length, 1);
+  });
+
+  it('C12: the screen is kept awake, and the lock taken again when the page returns', async () => {
+    const screen = createFakeScreen();
+    const { capture } = setup({ screen });
+    await capture.start();
+    await Promise.resolve();
+    assert.equal(screen.locks.length, 1);
+    assert.equal(screen.locks[0].type, 'screen');
+
+    screen.setHidden(true);
+    await Promise.resolve();
+    assert.equal(screen.locks.length, 1, 'no point asking while hidden');
+
+    screen.setHidden(false);
+    await Promise.resolve();
+    assert.equal(screen.locks.length, 2, 'asked again on the way back');
+  });
+
+  it('C12: a browser that refuses the lock, or has none, still captures', async () => {
+    const refused = setup({ screen: createFakeScreen({ refuse: true }) });
+    await refused.capture.start();
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(refused.capture.status, 'running');
+    assert.equal(refused.capture.wakeLock, null);
+
+    const stack = createAudioStack();
+    const bare = new Capture({
+      mediaDevices: stack.mediaDevices,
+      AudioContext: stack.AudioContext,
+      AudioWorkletNode: stack.AudioWorkletNode,
+      workletUrl: new URL('../src/audio/worklet.js', import.meta.url),
+      timers: createFakeTimers(),
+      visibility: createFakeScreen().visibility,
+      onFrame: () => {},
+      onStatus: () => {},
+    });
+    await bare.start();
+    assert.equal(bare.status, 'running');
   });
 
   it('C12: the constraint literals are present in the source', () => {

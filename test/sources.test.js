@@ -16,6 +16,7 @@
 
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, normalize } from 'node:path';
 import { describe, it } from 'node:test';
 
 /**
@@ -32,17 +33,57 @@ function filesUnder(dir, pattern) {
     .map((name) => `${dir}/${name}`);
 }
 
+/**
+ * Read a file of the repository.
+ *
+ * @param {string} path Path relative to the repository root.
+ * @returns {string} Its contents.
+ */
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+
+/**
+ * The modules a file imports, as repository-relative paths.
+ *
+ * @param {string} path Path of the importing file.
+ * @returns {string[]} Paths of the imported modules.
+ */
+function importsOf(path) {
+  const source = read(path);
+  return [...source.matchAll(/from\s+'(\.[^']+)'/g)]
+    .map((match) => normalize(join(dirname(path), match[1])))
+    .map((imported) => imported.split('\\').join('/'));
+}
+
 describe('sources', () => {
   // The coverage report lists only files a test loaded, so a module no test
-  // touches would slip past the 100% gate. This closes that hole.
-  it('B2: every source module is imported or spawned by a test', () => {
+  // reaches would slip past the 100% gate. A test need not name every module:
+  // naming one that imports it is enough, which is how the sprite sheet's
+  // thirty-two frames are covered by the index that collects them.
+  it('B2: every source module is reached by a test, directly or through an import', () => {
     const modules = [...filesUnder('src', /\.js$/), ...filesUnder('scripts', /\.mjs$/)];
-    assert.ok(modules.length > 0);
-    const tests = filesUnder('test', /\.js$/)
-      .map((path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'))
-      .join('\n');
+    assert.ok(modules.length > 30);
+    const tests = filesUnder('test', /\.js$/).map(read).join('\n');
+
+    const reached = new Set(modules.filter((path) => tests.includes(path)));
+    for (const path of [...reached]) {
+      for (const imported of importsOf(path)) {
+        reached.add(imported);
+      }
+    }
+    // Follow imports until nothing new is reached.
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const path of [...reached]) {
+        for (const imported of importsOf(path)) {
+          if (!reached.has(imported)) {
+            reached.add(imported);
+            grew = true;
+          }
+        }
+      }
+    }
     for (const path of modules) {
-      assert.ok(tests.includes(path), `no test references ${path}`);
+      assert.ok(reached.has(path), `no test reaches ${path}`);
     }
   });
 });

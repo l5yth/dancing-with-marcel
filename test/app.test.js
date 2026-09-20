@@ -19,7 +19,13 @@ import { existsSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { boot } from '../src/app.js';
-import { createAudioStack, createFakeDocument, namedError } from './helpers/fakes.js';
+import {
+  createAudioStack,
+  createFakeDocument,
+  createFakeTimers,
+  createFakeWindow,
+  namedError,
+} from './helpers/fakes.js';
 import { drums, silence } from './helpers/synth.js';
 
 /**
@@ -33,14 +39,19 @@ import { drums, silence } from './helpers/synth.js';
 function setup({ search = '', missing = [] } = {}) {
   const stack = createAudioStack();
   const document = createFakeDocument({ missing });
+  const window = createFakeWindow();
+  const timers = createFakeTimers();
   const env = {
     document,
     location: { search },
+    timers,
     navigator: { mediaDevices: stack.mediaDevices },
     AudioContext: stack.AudioContext,
     AudioWorkletNode: stack.AudioWorkletNode,
+    window,
+    random: () => 0,
   };
-  return { stack, document, env };
+  return { stack, document, window, timers, env };
 }
 
 /**
@@ -76,6 +87,49 @@ describe('app', () => {
     assert.equal(document.elements.start.hidden, false);
     assert.equal(document.elements.overlay.hidden, true);
     assert.equal(document.elements.repo.hidden, true);
+  });
+
+  it('C16: Marcel performs from the moment the page opens, before the microphone', () => {
+    const { document, window, env } = setup();
+    boot(env);
+    assert.ok(Number.parseFloat(document.elements.stage.style.fontSize) > 1, 'the stage is sized');
+    assert.ok(window.runFrame(0), 'an animation frame was asked for');
+    assert.ok(document.elements.stage.textContent.length > 1000, 'a frame is drawn');
+    assert.equal(document.elements.panel.hidden, false, 'the start button is still offered');
+  });
+
+  it('C16: the stage is refitted when the window changes shape', () => {
+    const { document, window, env } = setup();
+    boot(env);
+    const before = document.elements.stage.style.fontSize;
+    window.innerWidth = 640;
+    window.innerHeight = 480;
+    window.listeners.resize();
+    assert.notEqual(document.elements.stage.style.fontSize, before);
+  });
+
+  it('C16: the panel gets out of the way once capture runs, unless debugging', async () => {
+    const plain = setup();
+    boot(plain.env);
+    await click(plain.document);
+    assert.equal(plain.document.elements.panel.hidden, true);
+
+    const debug = setup({ search: '?debug=1' });
+    boot(debug.env);
+    await click(debug.document);
+    assert.equal(debug.document.elements.panel.hidden, false);
+  });
+
+  it('C16: what he performs follows what is heard', async () => {
+    const { stack, document, window, env } = setup();
+    boot(env);
+    await click(document);
+    window.runFrame(0);
+    const beforeMusic = document.elements.stage.textContent;
+    push(stack, drums(120, 4, RATE));
+    window.runFrame(16);
+    assert.notEqual(document.elements.stage.textContent, beforeMusic, 'he started dancing');
+    assert.equal(document.elements.label.textContent.startsWith('music'), true);
   });
 
   it('unit: ?debug=1 also shows the repository link', () => {
@@ -136,7 +190,10 @@ describe('app', () => {
     await click(debug.document);
     assert.equal(debug.document.elements.overlay.textContent, '');
     push(debug.stack, drums(120, 3, RATE));
-    assert.match(debug.document.elements.overlay.textContent, /^state\s+music\nlevel\s+-\d/);
+    assert.match(
+      debug.document.elements.overlay.textContent,
+      /^state\s+music\s+scene \w+\nlevel\s+-\d/,
+    );
 
     const plain = setup();
     boot(plain.env);

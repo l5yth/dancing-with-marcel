@@ -19,5 +19,14 @@
  */
 
 import { boot } from './app.js';
+import { browserTimers } from './audio/timers.js';
 
-boot({ document, location, navigator, AudioContext, AudioWorkletNode });
+boot({
+  document,
+  location,
+  navigator,
+  AudioContext,
+  AudioWorkletNode,
+  window,
+  timers: browserTimers,
+});

@@ -48,12 +48,13 @@ export function statusText(status, detail = '') {
  *
  * @param {PipelineEvent} event The latest decision.
  * @param {Readonly<Config>} config Active configuration.
+ * @param {string} scene Loop Marcel is performing.
  * @returns {string} One line per measurement.
  */
-export function overlayText(event, config) {
+export function overlayText(event, config, scene) {
   const bpm = event.bpm === null ? 'none' : `${Math.round(event.bpm)}`;
   return [
-    `state    ${event.state}`,
+    `state    ${event.state}   scene ${scene}`,
     `level    ${event.levelDb.toFixed(1)} dB   floor ${event.floorDb.toFixed(1)} dB   need ${(event.floorDb + config.musicOverFloorDb).toFixed(1)} dB`,
     `flatness ${event.flatness.toFixed(2)}   need at most ${config.maxFlatness}`,
     `bass     ${event.bass.toFixed(2)}   need at least ${config.minBass}`,

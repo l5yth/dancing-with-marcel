@@ -15,14 +15,19 @@
 */
 
 /**
- * @file Wiring: page elements, capture, and the pipeline. Browser globals
- * arrive through the `Env` type, so the wiring runs in unit tests.
+ * @file Wiring: page elements, capture, the pipeline, and the stage. Browser
+ * globals arrive through the `Env` type, so the wiring runs in unit tests.
+ *
+ * Marcel performs from the moment the page opens, before the microphone is
+ * allowed: he is between songs until there is something to hear.
  */
 
 import { Capture } from './audio/capture.js';
 import { debugLabel } from './classify/label.js';
 import { Pipeline } from './classify/pipeline.js';
+import { SceneDirector } from './classify/scene.js';
 import { isDebug, parseConfig } from './config.js';
+import { Stage } from './view/stage.js';
 import { overlayText, statusText } from './view/text.js';
 
 /** Milliseconds of audio between two refreshes of the debug overlay. */
@@ -46,49 +51,70 @@ function element(document, id) {
 
 /**
  * Wire the page: the start button begins capture, every frame feeds the
- * pipeline, and the debug word follows its state.
+ * pipeline, and the stage performs what the pipeline decides.
  *
  * @param {Env} env Browser globals.
  * @returns {Capture} The capture, for inspection.
  */
 export function boot(env) {
-  const { document, location, navigator } = env;
+  const { document, location, navigator, window } = env;
   const config = parseConfig(location.search);
   const debug = isDebug(location.search);
   const start = element(document, 'start');
   const label = element(document, 'label');
+  const panel = element(document, 'panel');
   const overlay = element(document, 'overlay');
   overlay.hidden = !debug;
   element(document, 'repo').hidden = !debug;
 
+  const stage = new Stage({ element: element(document, 'stage'), document });
+  const director = new SceneDirector({ config, random: env.random });
   /** @type {Pipeline | null} */
   let pipeline = null;
   /** @type {PipelineEvent | null} */
   let last = null;
   let overlayMs = 0;
 
+  const fit = () => stage.fit(window.innerWidth, window.innerHeight);
+  const paint = (/** @type {number} */ elapsedMs) => {
+    stage.draw({
+      loop: director.loop,
+      elapsedMs,
+      danceBpm: last?.danceBpm ?? config.defaultBpm,
+      dancing: last?.state === 'music',
+      breakFrameMs: config.breakFrameMs,
+    });
+    window.requestAnimationFrame(paint);
+  };
+
   const capture = new Capture({
     mediaDevices: navigator.mediaDevices,
     AudioContext: env.AudioContext,
     AudioWorkletNode: env.AudioWorkletNode,
     workletUrl: new URL('./audio/worklet.js', import.meta.url),
-    /** Feed one frame to the pipeline and refresh the text. */
+    timers: env.timers,
+    visibility: document,
+    wakeLock: navigator.wakeLock,
+    /** Feed one frame to the pipeline and let it choose the scene. */
     onFrame(frame, sampleRate) {
       pipeline ??= new Pipeline({ config, sampleRate });
       for (const event of pipeline.push(frame)) {
         last = event;
+        director.update(event, pipeline.hopMs);
         label.textContent = debugLabel(event.state, event.locked ? event.danceBpm : null);
       }
       overlayMs += (frame.length / sampleRate) * 1000;
       if (debug && last !== null && overlayMs >= OVERLAY_INTERVAL_MS) {
         overlayMs = 0;
-        overlay.textContent = overlayText(last, config);
+        overlay.textContent = overlayText(last, config, director.loop);
       }
     },
-    /** Show the start button and status text while not running, the debug word once running. */
+    /** Show the panel until capture runs, then get out of Marcel's way. */
     onStatus(status, detail) {
-      start.hidden = status === 'starting' || status === 'running';
-      if (status !== 'running') {
+      const running = status === 'running';
+      start.hidden = status === 'starting' || running;
+      panel.hidden = running && !debug;
+      if (!running) {
         label.textContent = statusText(status, detail);
       } else if (last === null) {
         label.textContent = 'break';
@@ -96,5 +122,8 @@ export function boot(env) {
     },
   });
   start.addEventListener('click', () => capture.start());
+  window.addEventListener('resize', fit);
+  fit();
+  window.requestAnimationFrame(paint);
   return capture;
 }

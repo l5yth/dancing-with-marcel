@@ -7,6 +7,42 @@
 // Types only; nothing ships. `npm run docs:check` requires a doc comment on
 // every top-level declaration here.
 
+/** The screen wake lock a browser may offer. */
+interface ScreenWakeLock {
+  /** Ask to keep the screen on; the browser may refuse. */
+  request: (type: 'screen') => Promise<unknown>;
+}
+
+/** Something to run later, with no arguments and no result. */
+type Deferred = () => void;
+
+/** Where chance comes from, with the shape of `Math.random`. */
+type RandomSource = () => number;
+
+/** A list of loop names that is not to be changed. */
+type LoopList = readonly string[];
+
+/** The dance loops grouped by energy, quietest first. */
+type LoopTiers = readonly LoopList[];
+
+/** What one frame of the sprite sheet is, as the design project describes it. */
+interface FrameMeta {
+  /** `dance` for an on-beat performance frame, `break` for a between-song one. */
+  group: string;
+  /** How much energy the frame carries, from 0 for still to 3 for a chorus. */
+  energy: number;
+  /** Where it falls in the bar: `down`, `up`, `and`, or `null` off the beat. */
+  beat: string | null;
+}
+
+/** What the scene director needs: the tuning, and a source of chance. */
+interface SceneOptions {
+  /** Thresholds and timings. */
+  config: Readonly<Config>;
+  /** Where chance comes from; the default is `Math.random`. */
+  random?: RandomSource;
+}
+
 /** Classifier state (SPEC D2). */
 type State = 'break' | 'music';
 
@@ -47,6 +83,12 @@ interface Config {
   defaultBpm: number;
   /** How long a new tempo must hold before the dance follows it, in milliseconds. */
   bpmSettleMs: number;
+  /** How far over the music threshold counts as full energy, in dB. */
+  driveRangeDb: number;
+  /** How long one dance scene is held before another of the same energy may follow, in milliseconds. */
+  sceneHoldMs: number;
+  /** How long one frame of a between-song scene lasts, in milliseconds. */
+  breakFrameMs: number;
 }
 
 /** Name of one tunable. */
@@ -162,8 +204,30 @@ type AudioContextConstructor = typeof AudioContext;
 /** Constructor of a worklet node. */
 type AudioWorkletNodeConstructor = typeof AudioWorkletNode;
 
+/** The timers the capture schedules its retries and watchdog with. */
+interface Timers {
+  /** Run something after a delay, returning a handle. */
+  setTimeout: (run: () => void, delayMs: number) => unknown;
+  /** Cancel a pending timer by its handle. */
+  clearTimeout: (handle: unknown) => void;
+}
+
+/** The part of the page the capture watches to know whether it is on screen. */
+interface Visibility {
+  /** Whether the page is currently hidden. */
+  readonly hidden: boolean;
+  /** Subscribe to `visibilitychange`. */
+  addEventListener: (type: string, listener: () => void) => void;
+}
+
 /** Everything the capture needs from the browser, injected so tests can fake it. */
 interface CaptureDeps {
+  /** Timers for the retry backoff and the watchdog. */
+  timers: Timers;
+  /** The page, watched so the wake lock is taken again when it is shown. */
+  visibility: Visibility;
+  /** The screen wake lock, when the browser has one. */
+  wakeLock?: ScreenWakeLock;
   /** Source of the microphone stream. */
   mediaDevices: Pick<MediaDevices, 'getUserMedia'>;
   /** Audio context constructor. */
@@ -178,6 +242,18 @@ interface CaptureDeps {
   onStatus: StatusHandler;
 }
 
+/** The part of the browser window the stage needs. */
+interface StageWindow {
+  /** Width of the viewport, in pixels. */
+  innerWidth: number;
+  /** Height of the viewport, in pixels. */
+  innerHeight: number;
+  /** Subscribe to a window event, used for `resize`. */
+  addEventListener: (type: string, listener: () => void) => void;
+  /** Ask to be called before the next repaint, with a millisecond timestamp. */
+  requestAnimationFrame: (callback: (elapsedMs: number) => void) => number;
+}
+
 /** Browser globals the app needs, injected so the wiring runs in unit tests. */
 interface Env {
   /** The page. */
@@ -185,9 +261,18 @@ interface Env {
   /** The page location. */
   location: { search: string };
   /** The browser navigator. */
-  navigator: { mediaDevices: Pick<MediaDevices, 'getUserMedia'> };
+  navigator: {
+    mediaDevices: Pick<MediaDevices, 'getUserMedia'>;
+    wakeLock?: ScreenWakeLock;
+  };
   /** Audio context constructor. */
   AudioContext: AudioContextConstructor;
   /** Worklet node constructor. */
   AudioWorkletNode: AudioWorkletNodeConstructor;
+  /** The browser window. */
+  window: StageWindow;
+  /** Timers for the capture's retry backoff and watchdog. */
+  timers: Timers;
+  /** Where chance comes from; the default is `Math.random`. */
+  random?: () => number;
 }

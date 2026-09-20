@@ -45,8 +45,8 @@ describe('view text', () => {
       danceBpm: 179.6,
       locked: true,
     };
-    const lines = overlayText(event, DEFAULTS).split('\n');
-    assert.equal(lines[0], 'state    music');
+    const lines = overlayText(event, DEFAULTS, 'headbang').split('\n');
+    assert.equal(lines[0], 'state    music   scene headbang');
     assert.match(lines[1], /^level\s+-31\.2 dB\s+floor -58\.5 dB\s+need -46\.5 dB$/);
     assert.match(lines[2], /^flatness 0\.42\s+need at most 0\.6$/);
     assert.match(lines[3], /^bass\s+0\.71\s+need at least 0\.15$/);
@@ -71,7 +71,8 @@ describe('view text', () => {
       danceBpm: DEFAULTS.defaultBpm,
       locked: false,
     };
-    const lines = overlayText(event, DEFAULTS).split('\n');
+    const lines = overlayText(event, DEFAULTS, 'smoke').split('\n');
+    assert.match(lines[0], /^state\s+break\s+scene smoke$/);
     assert.match(lines[5], /^tempo\s+none bpm at 0\.00/);
     assert.equal(lines[6], 'dance    140.0 bpm (default)');
   });

@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!package-lock.json", "!LICENSE"]
+    "includes": ["**", "!package-lock.json", "!LICENSE", "!design/gen.js", "!src/sprites"]
   },
   "formatter": {
     "enabled": true,

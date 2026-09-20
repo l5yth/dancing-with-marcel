@@ -24,6 +24,7 @@ html,
 body {
   margin: 0;
   height: 100%;
+  overflow: hidden;
   background: var(--bg);
   color: var(--fg);
 }
@@ -35,7 +36,23 @@ body {
   font-family: ui-monospace, "DejaVu Sans Mono", monospace;
 }
 
-main {
+/*
+  The sprite sheet was drawn for Courier at line-height 0.88, which is what
+  makes a character cell the shape the art assumes. The size comes from the
+  script, which measures a cell and scales the grid to the window. The class
+  carries the font so the script can measure a cell by styling its probe the
+  same way; measuring the wrong font would size the art against the wrong grid.
+*/
+.sheet {
+  margin: 0;
+  font-family: "Courier New", Courier, monospace;
+  line-height: 0.88em;
+  white-space: pre;
+  font-size: 4px;
+}
+
+#panel {
+  position: fixed;
   text-align: center;
 }
 

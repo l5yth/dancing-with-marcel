@@ -122,8 +122,14 @@ describe('classifier', () => {
 
       const before = events.indexOf(entered);
       assert.ok(
-        labels.slice(0, before).every((label) => label === 'break' || label === 'music'),
-        'no tempo is shown before one has locked',
+        labels.slice(0, before).every((label) => label === 'break'),
+        'nothing is claimed before the music starts',
+      );
+      const locked = events.findIndex((event) => event.locked);
+      assert.ok(locked > before, 'the tempo locks after the music starts, not before');
+      assert.ok(
+        labels.slice(before, locked).every((label) => label === 'music'),
+        'between entering and locking the label is exactly music',
       );
 
       const shown = labels.findIndex((label) => /^music \(\d+ bpm\)$/.test(label));
@@ -144,22 +150,53 @@ describe('classifier', () => {
     });
   }
 
+  /**
+   * Hold a music fixture to everything C2 asks of it: it enters inside the
+   * budget, shows the tempo inside ten seconds, reads that tempo within 3% for
+   * the rest of the run, keeps the label and the dance tempo in agreement, and
+   * never falls back to a break.
+   *
+   * @param {Float32Array} audio Lead-in followed by the music.
+   * @param {number} bpm The tempo played.
+   * @returns {void}
+   */
+  function expectSteadyMusic(audio, bpm) {
+    const { events, changes, labels } = run(audio);
+    const entered = changes.find((event) => event.state === 'music');
+    assert.ok(entered !== undefined, 'never became music');
+    assert.ok(
+      entered.time <= LEAD + (DEFAULTS.musicEnterMs + 4000) / 1000,
+      `entered at ${entered.time} s`,
+    );
+    assert.equal(
+      changes.filter((event) => event.state === 'break' && event.time > entered.time).length,
+      0,
+      'fell back to break',
+    );
+    const shown = labels.findIndex((label) => /^music \(\d+ bpm\)$/.test(label));
+    assert.ok(shown !== -1, 'the tempo is never shown');
+    assert.ok(events[shown].time <= LEAD + 10, `tempo shown at ${events[shown].time} s`);
+    for (let index = shown; index < labels.length; index += 1) {
+      const match = /^music \((\d+) bpm\)$/.exec(labels[index]);
+      if (match !== null) {
+        assert.equal(Number(match[1]), Math.round(events[index].danceBpm), 'label disagrees');
+        assert.ok(
+          Math.abs(Number(match[1]) - bpm) <= bpm * 0.03,
+          `${labels[index]} at ${events[index].time} s, playing ${bpm}`,
+        );
+      }
+    }
+  }
+
   for (const bpm of [100, 160, 180]) {
     it(`C3: drums at ${bpm} bpm become music and show that tempo, without an octave error`, () => {
-      const { events, labels } = run(concat(leadIn(), drums(bpm, 20, RATE)));
-      const last = events.at(-1);
-      assert.equal(last.state, 'music');
-      assert.match(labels.at(-1), /^music \(\d+ bpm\)$/);
-      assert.ok(Math.abs(last.danceBpm - bpm) <= bpm * 0.03, `${last.danceBpm} for ${bpm}`);
+      expectSteadyMusic(concat(leadIn(), drums(bpm, 20, RATE)), bpm);
     });
   }
 
   for (const bpm of [160, 180]) {
     it(`C3: drums over a guitar bed at ${bpm} bpm read the same`, () => {
-      const { events } = run(concat(leadIn(), dense(bpm, 20, RATE)));
-      const last = events.at(-1);
-      assert.equal(last.state, 'music');
-      assert.ok(Math.abs(last.danceBpm - bpm) <= bpm * 0.03, `${last.danceBpm} for ${bpm}`);
+      expectSteadyMusic(concat(leadIn(), dense(bpm, 20, RATE)), bpm);
     });
   }
 
@@ -199,13 +236,21 @@ describe('classifier', () => {
     );
   });
 
-  it('C6: the second song takes the dance tempo with it', () => {
+  it('C6: the second song takes the dance tempo with it, within ten seconds of its first beat', () => {
+    const songStart = LEAD + 15 + 5;
     const { events } = run(
       concat(leadIn(), drums(120, 15, RATE), room(5, RATE), drums(160, 15, RATE)),
     );
-    const settled = events.filter((event) => event.time >= LEAD + 20 + 10);
+    const settled = events.filter((event) => event.time >= songStart + 10);
     assert.ok(settled.length > 0);
-    assert.ok(Math.abs(settled.at(-1).danceBpm - 160) <= 160 * 0.03, `${settled.at(-1).danceBpm}`);
+    // At the moment the criterion names, not merely by the end of the run.
+    assert.ok(Math.abs(settled[0].danceBpm - 160) <= 160 * 0.03, `${settled[0].danceBpm} at 10 s`);
+    for (const event of settled) {
+      assert.ok(
+        Math.abs(event.danceBpm - 160) <= 160 * 0.03,
+        `${event.danceBpm} at ${event.time} s`,
+      );
+    }
   });
 
   it('C7: a stop shorter than breakHoldMs stays music', () => {

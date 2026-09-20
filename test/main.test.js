@@ -16,7 +16,7 @@
 
 import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
-import { createAudioStack, createFakeDocument } from './helpers/fakes.js';
+import { createAudioStack, createFakeDocument, createFakeWindow } from './helpers/fakes.js';
 
 // The entry module reads browser globals; give it fakes before it loads.
 const stack = createAudioStack();
@@ -32,6 +32,7 @@ Object.assign(globalThis, {
   location: { search: '' },
   AudioContext: stack.AudioContext,
   AudioWorkletNode: stack.AudioWorkletNode,
+  window: createFakeWindow(),
 });
 
 await import('../src/main.js');
@@ -40,7 +41,7 @@ after(() => {
   if (savedNavigator) {
     Object.defineProperty(globalThis, 'navigator', savedNavigator);
   }
-  for (const name of ['document', 'location', 'AudioContext', 'AudioWorkletNode']) {
+  for (const name of ['document', 'location', 'AudioContext', 'AudioWorkletNode', 'window']) {
     Reflect.deleteProperty(globalThis, name);
   }
 });
