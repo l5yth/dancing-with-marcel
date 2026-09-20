@@ -72,7 +72,6 @@ const MAT = {
   belt:     { alb:0.09, shin:0.45, spec:20, rim:0.42 },
   metal:    { alb:0.70, shin:1.00, spec:48, rim:0.30 },
   mic:      { alb:0.18, shin:0.60, spec:22, rim:0.45 },
-  glass:    { alb:0.46, shin:1.00, spec:38, rim:0.40 },
   pint:     { alb:0.14, shin:1.00, spec:44, rim:0.52 },
   beer:     { tone:0.55, flat:true },
   foam:     { tone:0.05, flat:true },

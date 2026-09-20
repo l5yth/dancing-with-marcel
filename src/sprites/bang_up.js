@@ -16,7 +16,8 @@
 
 /**
  * @file Frame `bang_up` of the ASCII Punk sprite sheet (SPEC D10). Generated
- * by `design/render.mjs`; edit the design project, not this file.
+ * by `design/render.mjs` from `design/gen.js`; change the generator, not
+ * this file.
  */
 
 /** Rows of the frame, top to bottom, right-trimmed on a 168 by 128 grid. */

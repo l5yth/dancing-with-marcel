@@ -21,7 +21,7 @@ import { frameAt, frameText, Stage } from '../src/view/stage.js';
 import { generator } from './helpers/art.js';
 import { createFakeDocument } from './helpers/fakes.js';
 
-/** The ramp the design project draws with: lightest first, darkest last. */
+/** The ramp the art is drawn with: blank for black first, brightest last. */
 const RAMP = ' .\'`^",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$';
 
 /**

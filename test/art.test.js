@@ -75,6 +75,23 @@ describe('the art', () => {
     }
   });
 
+  it('C18: the light is gathered, not painted along every pale edge', () => {
+    // The generator used to force the silhouette of any pale material to an ink
+    // outline, a device for separating pale objects from white paper. On black
+    // it lights the edge of every patch of skin, shirt, and hair, and the
+    // figure turns back into a bright outline drawing. Restoring it triples the
+    // count below; the rim lights it was removed in favour of leave the
+    // brightest cells a small minority.
+    for (const name of ['idle_a', 'sing', 'sneer']) {
+      const found = marks(gen.RAMP, draw(name));
+      const hot = found.filter((mark) => mark.level >= 0.85).length;
+      assert.ok(
+        hot / found.length <= 0.05,
+        `${name}: ${((100 * hot) / found.length).toFixed(1)}% of the marks are at the very top of the ramp`,
+      );
+    }
+  });
+
   it('C18: he stands on a contact line, not in a pool of light', () => {
     // Lighting the sheet lights everything flat with it, the ground shadow
     // included, and a soft blob under his boots becomes the brightest thing on

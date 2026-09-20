@@ -43,7 +43,7 @@ export function generator() {
  * @param {string} char One character of a frame.
  * @returns {number} Its position on the ramp.
  */
-export function level(ramp, char) {
+function level(ramp, char) {
   return ramp.indexOf(char) / (ramp.length - 1);
 }
 
