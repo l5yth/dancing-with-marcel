@@ -18,6 +18,8 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { STAGE } from '../src/classify/show.js';
+import { PALETTE } from '../src/sprites/asciipunk.js';
 import { click, findBrowser, openPage, until } from './helpers/browser.js';
 import { concat, drums, room } from './helpers/synth.js';
 
@@ -55,20 +57,74 @@ async function page({ query = '', window } = {}) {
 }
 
 describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : false }, () => {
-  it('C17: the page is white on black and Marcel performs before the microphone is allowed', async () => {
-    const session = await page();
+  it('C17: the page is white on black and the show runs before the microphone is allowed', async () => {
+    // A quick pace between songs, so the walk on takes seconds and not half a minute.
+    const session = await page({ query: '?breakFrameMs=100' });
     const look = await session.evaluate(
       `({ background: getComputedStyle(document.body).backgroundColor,
           color: getComputedStyle(document.body).color,
-          drawn: document.getElementById('stage').textContent.length,
+          rows: document.getElementById('stage').children.length,
           fontSize: Number.parseFloat(document.getElementById('stage').style.fontSize),
           panel: document.getElementById('panel').hidden })`,
     );
     assert.equal(look.background, 'rgb(0, 0, 0)');
     assert.equal(look.color, 'rgb(255, 255, 255)');
-    assert.ok(look.drawn > 1000, `only ${look.drawn} characters drawn`);
+    assert.equal(look.rows, STAGE.rows, 'a line for every row of the stage');
     assert.ok(look.fontSize > 1, `font size ${look.fontSize}`);
     assert.equal(look.panel, false, 'the start button is offered');
+    // Three punks of some ninety characters each, once they have walked on.
+    const drawn = await until(
+      async () =>
+        Number(
+          await session.evaluate(
+            `document.getElementById('stage').textContent.replaceAll(/\\s/g, '').length`,
+          ),
+        ) > 200,
+      15000,
+    );
+    assert.ok(drawn, 'nobody walked on');
+  });
+
+  it('C22: the stage fills the width, and every colour on it is white or one of the five accents', async () => {
+    const session = await page({
+      query: '?breakFrameMs=100',
+      window: { width: 1280, height: 800 },
+    });
+    // Billy's bleached hair and Mo's lipstick are on the canvas once they are.
+    const coloured = await until(
+      async () =>
+        Number(
+          await session.evaluate(
+            `new Set([...document.querySelectorAll('#stage span')].map((run) => run.className)).size`,
+          ),
+        ) >= 2,
+      15000,
+    );
+    assert.ok(coloured, 'no accent ever reached the page');
+    const look = await session.evaluate(
+      `(() => {
+         const stage = document.getElementById('stage');
+         const box = stage.getBoundingClientRect();
+         const runs = [...stage.querySelectorAll('*')];
+         return { width: box.width, height: box.height,
+                  colours: [...new Set([stage, ...runs].map((node) => getComputedStyle(node).color))],
+                  classes: [...new Set(runs.map((run) => run.className).filter(Boolean))],
+                  grounds: [...new Set(runs.map((node) => getComputedStyle(node).backgroundColor))] };
+       })()`,
+    );
+    assert.ok(Math.abs(look.width - 1280) < 2, `the stage is ${look.width} wide in a 1280 window`);
+    assert.ok(look.height < 400, `a band, not a page: ${look.height} tall`);
+    const rgb = (/** @type {string} */ hex) =>
+      `rgb(${[1, 3, 5].map((at) => Number.parseInt(hex.slice(at, at + 2), 16)).join(', ')})`;
+    const allowed = ['rgb(255, 255, 255)', ...Object.values(PALETTE).map(rgb)];
+    for (const colour of look.colours) {
+      assert.ok(allowed.includes(colour), `${colour} is on the stage`);
+    }
+    assert.ok(look.colours.length >= 3, `only ${look.colours} drawn`);
+    for (const name of look.classes) {
+      assert.ok(name in PALETTE, `a run is classed ${name}`);
+    }
+    assert.deepEqual(look.grounds, ['rgba(0, 0, 0, 0)'], 'a run paints its own ground');
   });
 
   it('C17: the grid is fitted inside the window, in either orientation', async () => {
@@ -89,7 +145,7 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
     }
   });
 
-  it('C17: clicking start opens the microphone and he dances to what he hears', async () => {
+  it('C17: clicking start opens the microphone and they dance to what they hear', async () => {
     const session = await page({ query: '?debug=1' });
     assert.equal(
       await session.evaluate(`document.getElementById('label').textContent`),
@@ -101,7 +157,7 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
     // two to turn over; waiting for it means both have.
     const heard = await until(
       async () =>
-        /^state\s+music\s+scene \w+$/m.test(
+        /^state\s+music\s+tier [123]$/m.test(
           String(await session.evaluate(`document.getElementById('overlay').textContent`)),
         ),
       35000,
@@ -116,16 +172,17 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
     const overlay = String(
       await session.evaluate(`document.getElementById('overlay').textContent`),
     );
-    assert.match(overlay, /^state\s+music\s+scene \w+$/m);
+    assert.match(overlay, /^state\s+music\s+tier [123]$/m);
     assert.match(overlay, /^level\s+-\d+\.\d dB\s+floor/m);
     assert.match(overlay, /^pulse\s+0\.\d{3}\s+need/m);
+    assert.match(overlay, /^punks\s+billy \w+, mo \w+, spike \w+/m);
 
     const frames = new Set();
     for (let look = 0; look < 30; look += 1) {
-      frames.add(await session.evaluate(`document.getElementById('stage').textContent.length`));
+      frames.add(await session.evaluate(`document.getElementById('stage').textContent`));
       await until(async () => false, 60);
     }
-    assert.ok(frames.size > 1, 'he stood still');
+    assert.ok(frames.size > 1, 'they stood still');
     assert.deepEqual(session.logs, [], 'the console stayed quiet');
   });
 
@@ -163,6 +220,31 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
       Math.abs(look.height - 800) < 2 || Math.abs(look.width - 1280) < 2,
       `after the font landed the grid fills neither axis: ${look.width}x${look.height}`,
     );
+  });
+
+  it('C22: the panel keeps off the punks: it ends above the first row any of them reaches', async () => {
+    for (const window of [
+      { width: 1280, height: 800 },
+      { width: 1920, height: 1080 },
+      { width: 1024, height: 768 },
+    ]) {
+      const session = await page({ window });
+      const look = await session.evaluate(
+        `(async () => {
+           await document.fonts.ready;
+           const stage = document.getElementById('stage').getBoundingClientRect();
+           return { panel: document.getElementById('panel').getBoundingClientRect().bottom,
+                    top: stage.top, row: stage.height / ${STAGE.rows} };
+         })()`,
+      );
+      // A punk is 16 rows tall with its feet on the floor row, so the rows above are empty.
+      const hair = look.top + (STAGE.floor - 15) * look.row;
+      const shape = `${window.width}x${window.height}`;
+      assert.ok(
+        look.panel <= hair,
+        `${shape}: the panel ends at ${look.panel}, hair begins at ${hair}`,
+      );
+    }
   });
 
   it('C19: the start button is part of its panel', async () => {

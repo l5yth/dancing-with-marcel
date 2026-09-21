@@ -19,7 +19,7 @@ import { existsSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { boot } from '../src/app.js';
-import { BREAK_LOOPS, DANCE_LOOPS } from '../src/classify/scene.js';
+import { BREAK_LOOPS, dancesOf, STAGE } from '../src/classify/show.js';
 import { DEFAULTS } from '../src/config.js';
 import {
   createAudioStack,
@@ -27,6 +27,7 @@ import {
   createFakeTimers,
   createFakeWindow,
   namedError,
+  pictureOf,
 } from './helpers/fakes.js';
 import { drums, silence } from './helpers/synth.js';
 
@@ -88,6 +89,40 @@ function push(stack, audio) {
   }
 }
 
+/**
+ * Count the ticks a show is given from here on.
+ *
+ * @param {import('../src/classify/show.js').Show} show The show.
+ * @returns {{ticks: number}} A counter that keeps counting.
+ */
+function countTicks(show) {
+  const counter = { ticks: 0 };
+  const tick = show.tick.bind(show);
+  show.tick = () => {
+    counter.ticks += 1;
+    tick();
+  };
+  return counter;
+}
+
+/**
+ * Run animation frames until everybody has walked on, between songs.
+ *
+ * @param {any} window The fake window.
+ * @param {import('../src/classify/show.js').Show} show The show.
+ * @returns {number} The time of the last frame run, in milliseconds.
+ */
+function walkOn(window, show) {
+  let elapsedMs = 0;
+  window.runFrame(elapsedMs);
+  while (show.punks.some((punk) => punk.state !== 'stage')) {
+    elapsedMs += DEFAULTS.breakFrameMs;
+    window.runFrame(elapsedMs);
+    assert.ok(elapsedMs < 120000, 'somebody never came home');
+  }
+  return elapsedMs;
+}
+
 describe('app', () => {
   it('unit: the page starts idle: button shown, overlay and repository link hidden', () => {
     const { document, env } = setup();
@@ -97,12 +132,20 @@ describe('app', () => {
     assert.equal(document.elements.repo.hidden, true);
   });
 
-  it('C16: Marcel performs from the moment the page opens, before the microphone', () => {
+  it('C16: the show runs from the moment the page opens, before the microphone', () => {
     const { document, window, env } = setup();
-    boot(env);
+    const { show } = boot(env);
     assert.ok(Number.parseFloat(document.elements.stage.style.fontSize) > 1, 'the stage is sized');
     assert.ok(window.runFrame(0), 'an animation frame was asked for');
-    assert.ok(document.elements.stage.textContent.length > 1000, 'a frame is drawn');
+    const empty = pictureOf(document.elements.stage);
+    assert.equal(empty.split('\n').length, STAGE.rows, 'a line is drawn for every row');
+    assert.equal(empty.trim(), '', 'they start in the wings');
+    walkOn(window, show);
+    const drawn = pictureOf(document.elements.stage).replaceAll(/\s/g, '');
+    assert.ok(drawn.length > 200, `only ${drawn.length} characters of punk`);
+    for (const punk of show.punks) {
+      assert.ok(BREAK_LOOPS.includes(punk.loop), `${punk.id} does ${punk.loop} between songs`);
+    }
     assert.equal(document.elements.panel.hidden, false, 'the start button is still offered');
   });
 
@@ -112,14 +155,15 @@ describe('app', () => {
     // whatever monospace the machine had would be the wrong shape all night.
     const { document, env } = setup();
     const { stage } = boot(env);
-    assert.equal(document.created.length, 1, 'measured once to begin with');
+    const probes = () => document.created.filter((/** @type {any} */ node) => node.id === 'pre');
+    assert.equal(probes().length, 1, 'measured once to begin with');
     const before = document.elements.stage.style.fontSize;
 
-    // A taller cell in the new face. Height, because the grid is height-bound
-    // on any wide window: a wider cell would change nothing and prove nothing.
-    document.cell.height = 132;
+    // A wider cell in the new face. Width, because the stage is width-bound on
+    // any wide window: a taller cell would change nothing and prove nothing.
+    document.cell.width = 72;
     await document.loadFonts();
-    assert.equal(document.created.length, 2, 'the cell was never measured again');
+    assert.equal(probes().length, 2, 'the cell was never measured again');
     assert.notEqual(document.elements.stage.style.fontSize, before);
     assert.ok(stage.cell !== null, 'the stage is left without a measurement');
   });
@@ -129,7 +173,7 @@ describe('app', () => {
     document.fonts = undefined;
     assert.doesNotThrow(() => boot(env));
     window.runFrame(0);
-    assert.ok(document.elements.stage.textContent.length > 1000);
+    assert.equal(pictureOf(document.elements.stage).split('\n').length, STAGE.rows);
   });
 
   it('C16: the stage is refitted when the window changes shape', () => {
@@ -155,104 +199,154 @@ describe('app', () => {
     }
   });
 
-  it('C16: what he performs follows what is heard', async () => {
+  it('C16: what they perform follows what is heard', async () => {
     const { stack, document, window, env } = setup();
-    const { director } = boot(env);
+    const { director, show } = boot(env);
     await click(document);
-    window.runFrame(0);
-    const beforeMusic = document.elements.stage.textContent;
-    assert.ok(BREAK_LOOPS.includes(director.loop), 'between songs to begin with');
+    const lastMs = walkOn(window, show);
+    const beforeMusic = pictureOf(document.elements.stage);
+    assert.deepEqual([show.dancing, show.tier, director.tier], [false, 0, 0], 'between songs');
 
     push(stack, drums(120, WARM_S, RATE));
-    window.runFrame(16);
-    assert.notEqual(document.elements.stage.textContent, beforeMusic, 'the scene changed');
+    window.runFrame(lastMs + 16);
+    assert.notEqual(pictureOf(document.elements.stage), beforeMusic, 'the scene changed');
     assert.equal(document.elements.label.textContent.startsWith('music'), true);
-    assert.ok(DANCE_LOOPS.flat().includes(director.loop), 'and it is a dance');
+    assert.equal(show.dancing, true);
+    assert.ok(director.tier >= 1, 'the director names a tier');
+    assert.equal(show.tier, director.tier, 'and the show dances to it');
+    for (const punk of show.punks) {
+      assert.ok(dancesOf(show.tier).includes(punk.loop), `${punk.id} does ${punk.loop}`);
+    }
   });
 
-  it('C16: the beat drives the stage, not the between-song rate', async () => {
-    // The wiring, not its effects: with `dancing` false, or the dance tempo
-    // replaced by the default, or the frame rate left at breakFrameMs, the
-    // frames below would not advance where an eighth note says they must.
+  it('C22: the beat drives the show: a tick every eighth note at the tempo heard', async () => {
+    // The wiring, not its effects: with the dance tempo replaced by the
+    // default, or the rate left at breakFrameMs, the ticks below would not
+    // fall where an eighth note says they must.
     const { stack, document, window, env } = setup();
-    boot(env);
+    const { show } = boot(env);
     await click(document);
     // Long enough for the gate to be sure and the tempo to lock, so the dance
     // tempo is the detected one and not the default it would fall back to.
     push(stack, drums(120, WARM_S, RATE));
-
-    /**
-     * The frame drawn at a moment.
-     *
-     * @param {number} elapsedMs When to paint.
-     * @returns {string} What was drawn.
-     */
-    const at = (elapsedMs) => {
-      window.runFrame(elapsedMs);
-      return document.elements.stage.textContent;
-    };
-    // Read the tempo he settled on rather than assuming it.
+    // Read the tempo they settled on rather than assuming it.
     const shown = /music \((\d+) bpm\)/.exec(document.elements.label.textContent);
     assert.ok(shown !== null, `no tempo locked: ${document.elements.label.textContent}`);
     const danceBpm = Number(shown[1]);
     assert.ok(Math.abs(danceBpm - 120) <= 4, `${danceBpm} bpm for a 120 bpm fixture`);
     assert.notEqual(danceBpm, DEFAULTS.defaultBpm, 'the default would hide a broken wiring');
-    const eighth = 60000 / danceBpm / 2;
-    assert.equal(at(0), at(eighth - 20), 'the frame holds inside one eighth note');
-    assert.notEqual(at(0), at(eighth + 20), 'and turns over at the next');
-    assert.notEqual(at(eighth + 20), at(2 * eighth + 20), 'and keeps going');
+
+    const counter = countTicks(show);
+    window.runFrame(0);
+    assert.equal(counter.ticks, 0, 'the music has just begun: drawn, not moved on');
+    for (let elapsedMs = 5; elapsedMs <= 2000; elapsedMs += 5) {
+      window.runFrame(elapsedMs);
+    }
+    // Four eighth notes a second at 120, however the animation frames fall.
+    assert.ok(Math.abs(counter.ticks - (2000 / 60000) * danceBpm * 2) <= 1, `${counter.ticks}`);
   });
 
-  it('C16: between songs he is not hurried along by the beat', async () => {
+  it('C22: between songs nobody is hurried along by the beat', async () => {
     const { stack, document, window, env } = setup();
-    boot(env);
+    const { show } = boot(env);
     await click(document);
     push(stack, silence(2, RATE));
+    const counter = countTicks(show);
     window.runFrame(0);
-    const first = document.elements.stage.textContent;
-    // Odd moments as well as even ones, so a frame rate gone wrong cannot land
-    // back on the same frame of a two-frame loop by luck.
-    for (const elapsedMs of [3, 501, 1100, 2399]) {
+    // Odd moments as well as even ones, so that a rate gone wrong cannot hide.
+    for (const elapsedMs of [3, 214, 501, DEFAULTS.breakFrameMs - 1]) {
       window.runFrame(elapsedMs);
-      assert.equal(
-        document.elements.stage.textContent,
-        first,
-        `the frame moved at ${elapsedMs} ms, inside one break frame`,
-      );
+      assert.equal(counter.ticks, 0, `a tick at ${elapsedMs} ms, inside one break frame`);
     }
+    window.runFrame(DEFAULTS.breakFrameMs);
+    assert.equal(counter.ticks, 1);
+    window.runFrame(2 * DEFAULTS.breakFrameMs - 1);
+    assert.equal(counter.ticks, 1);
+    window.runFrame(2 * DEFAULTS.breakFrameMs);
+    assert.equal(counter.ticks, 2);
   });
 
-  it('C16: the overlay names the scene actually being performed', async () => {
+  it('C22: ?breakFrameMs= sets the pace between songs', () => {
+    const { window, env } = setup({ search: '?breakFrameMs=300' });
+    const { show } = boot(env);
+    const counter = countTicks(show);
+    for (let elapsedMs = 0; elapsedMs <= 3000; elapsedMs += 10) {
+      window.runFrame(elapsedMs);
+    }
+    assert.equal(counter.ticks, 10);
+  });
+
+  it('C22: ticks keep their phase, and after a stall start again from now', () => {
+    const { window, env } = setup();
+    const { show } = boot(env);
+    const counter = countTicks(show);
+    const step = DEFAULTS.breakFrameMs;
+    window.runFrame(0);
+    // Animation frames land late; the ticks do not drift with them.
+    window.runFrame(step + 40);
+    window.runFrame(2 * step + 1);
+    assert.equal(counter.ticks, 2, 'the second tick waited for the first one to be on time');
+    // A tab left in the background for a minute is one tick, not sixty.
+    window.runFrame(60000);
+    assert.equal(counter.ticks, 3);
+    window.runFrame(60000 + step - 1);
+    assert.equal(counter.ticks, 3);
+    window.runFrame(60000 + step);
+    assert.equal(counter.ticks, 4);
+  });
+
+  it('C18: whoever is given something new to do opens on its first frame, and holds it', async () => {
+    // Ticking before drawing would open every dance on its second frame, and a
+    // two-frame scene on the wrong one.
+    const { stack, document, window, env } = setup();
+    const { show } = boot(env);
+    await click(document);
+    const lastMs = walkOn(window, show);
+    push(stack, drums(120, WARM_S, RATE));
+    assert.equal(show.dancing, true);
+    const counter = countTicks(show);
+    const eighth = 60000 / 120 / 2;
+
+    window.runFrame(lastMs + 1);
+    assert.equal(counter.ticks, 0, 'the dance was moved on before it was drawn');
+    assert.deepEqual(
+      show.punks.map((punk) => punk.index),
+      [0, 0, 0],
+    );
+    const opening = pictureOf(document.elements.stage);
+    window.runFrame(lastMs + 1 + eighth - 20);
+    assert.equal(counter.ticks, 0, 'the first frame is held a whole tick');
+    assert.equal(pictureOf(document.elements.stage), opening);
+    window.runFrame(lastMs + 1 + eighth + 20);
+    assert.equal(counter.ticks, 1);
+    assert.notEqual(pictureOf(document.elements.stage), opening);
+  });
+
+  it('C16: the overlay names what is actually being performed', async () => {
     const { stack, document, env } = setup({ search: '?debug=1' });
-    const { director } = boot(env);
+    const { director, show } = boot(env);
     await click(document);
     push(stack, drums(120, 3, RATE));
-    const shown = /^state\s+\w+\s+scene (\w+)$/m.exec(document.elements.overlay.textContent);
-    assert.ok(shown !== null, document.elements.overlay.textContent);
-    assert.equal(shown[1], director.loop, 'the overlay is reporting a different scene');
+    const text = document.elements.overlay.textContent;
+    const tier = /^state\s+\w+\s+tier (\d)$/m.exec(text);
+    const cast = /^punks\s+(.+)$/m.exec(text);
+    assert.ok(tier !== null && cast !== null, text);
+    assert.equal(Number(tier[1]), director.tier, 'the overlay is reporting a different tier');
+    assert.equal(cast[1], show.caption(), 'the overlay is reporting a different cast');
+    assert.match(cast[1], /^billy \w+, mo \w+, spike \w+$/);
   });
 
-  it('C16: the scene director is given the time that really passed', async () => {
-    // A hold that never elapses would leave one dance running all night.
-    // Chance has to vary, or every re-pick would land on the same loop and
-    // prove nothing.
-    let draw = 0;
-    const { stack, document, env } = setup({
-      search: '?sceneHoldMs=400',
-      random: () => [0, 0.35, 0.7, 0.95][draw++ % 4],
+  it('C22: chance reaches the show, so a test can script it', () => {
+    let draws = 0;
+    const { env } = setup({
+      random: () => {
+        draws += 1;
+        return 0;
+      },
     });
-    const { director } = boot(env);
-    await click(document);
-    // He has to be dancing: a break holds its scene until the music returns.
-    push(stack, drums(120, WARM_S, RATE));
-    assert.ok(director.heldMs > 0, 'no time reached the director');
-    const first = director.loop;
-    let changed = false;
-    for (let round = 0; round < 12 && !changed; round += 1) {
-      push(stack, drums(120, 0.5, RATE));
-      changed = director.loop !== first;
-    }
-    assert.ok(changed, 'the hold never elapsed, so the scene never moved on');
+    const { show } = boot(env);
+    assert.ok(draws > 0, 'the show was dealt its scenes by some other chance');
+    assert.equal(show.random, env.random);
   });
 
   it('unit: ?debug=1 also shows the repository link', () => {
@@ -316,7 +410,7 @@ describe('app', () => {
     push(debug.stack, drums(120, 3, RATE));
     assert.match(
       debug.document.elements.overlay.textContent,
-      /^state\s+(music|break)\s+scene \w+\nlevel\s+-\d/,
+      /^state\s+(music|break)\s+tier \d\nlevel\s+-\d/,
     );
 
     const plain = setup();

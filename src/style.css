@@ -14,7 +14,7 @@
    limitations under the License.
 */
 
-/* Monochrome only: white on black, nothing else (SPEC invariant 5). */
+/* White on black, plus the five accents further down (SPEC invariant 5). */
 :root {
   --fg: #fff;
   --bg: #000;
@@ -37,10 +37,10 @@ body {
 }
 
 /*
-  The face is shipped, because it decides the picture. Every glyph of the ramp
-  is a different brightness in Courier New, in DejaVu Sans Mono, and in the
-  Courier Prime the art was approved in, and a venue machine may have none of
-  them. The file is local, so nothing is fetched at the door (SPEC invariant 1)
+  The face is shipped, because it decides the picture. A slash, a bracket and
+  the shape of a cell all differ between Courier New, DejaVu Sans Mono, and the
+  Courier Prime the art was drawn and approved in, and a venue machine may have
+  none of them. The file is local, so nothing is fetched at the door (SPEC invariant 1)
   and it works with the projector offline.
 */
 @font-face {
@@ -52,8 +52,8 @@ body {
 }
 
 /*
-  The sprite sheet was drawn for Courier at line-height 0.88, which is what
-  makes a character cell the shape the art assumes. The size comes from the
+  The sprite sheet was drawn for Courier Prime at line-height 0.88, which is
+  what makes a character cell the shape the art assumes. The size comes from the
   script, which measures a cell and scales the grid to the window. The class
   carries the font so the script can measure a cell by styling its probe the
   same way; measuring the wrong font would size the art against the wrong grid.
@@ -66,17 +66,48 @@ body {
   font-size: 4px;
 }
 
+/*
+  The five accents of the sprite sheet's PALETTE, one class per mask letter:
+  bleached hair, ember and LED and blood, beer, screen glow, lipstick. They
+  reach the page only through a sprite's mask (SPEC invariant 5, F2), and a
+  test holds these values to the sheet's.
+*/
+.sheet .y {
+  color: #ffd21e;
+}
+
+.sheet .r {
+  color: #ff3b1f;
+}
+
+.sheet .a {
+  color: #f7a325;
+}
+
+.sheet .g {
+  color: #5cff6a;
+}
+
+.sheet .p {
+  color: #ff2e88;
+}
+
 /* The button takes its size from here, not from the body: at 16px under an
    8vmin label it was not part of the same panel, and it is what somebody has
-   to hit on a projector with a trackpad. */
+   to hit on a projector with a trackpad. The panel keeps to the top of the
+   window: the stage is a band across the middle, and a panel centred on it
+   would sit across the punk who stands there. */
 #panel {
   position: fixed;
+  top: 6vh;
+  left: 0;
+  right: 0;
   text-align: center;
   font-size: 4vmin;
 }
 
 #label {
-  margin: 0 0 1em;
+  margin: 0 0 0.5em;
   font-size: 8vmin;
 }
 

@@ -92,10 +92,8 @@ const PARAMS = {
   bpmSettleMs: { default: 3000, min: 0, max: 60000 },
   /** How far over the music threshold counts as full energy, in dB. */
   driveRangeDb: { default: 18, min: 1, max: 60 },
-  /** How long one dance scene is held before another of the same energy may follow, in milliseconds. */
-  sceneHoldMs: { default: 12000, min: 0, max: 600000 },
-  /** How long one frame of a between-song scene lasts, in milliseconds. */
-  breakFrameMs: { default: 2400, min: 100, max: 60000 },
+  /** How long one frame lasts between songs, in milliseconds. */
+  breakFrameMs: { default: 900, min: 100, max: 60000 },
 };
 
 /** Names of all tunables, in table order. */

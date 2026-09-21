@@ -23,7 +23,7 @@
 
 /**
  * Message for a capture status that is not `running`. `running` is excluded
- * rather than answered with an empty string: while Marcel is dancing the label
+ * rather than answered with an empty string: while the punks are dancing the label
  * belongs to the classifier, and the type says so, so the caller cannot quietly
  * blank it.
  *
@@ -50,18 +50,20 @@ export function statusText(status, detail = '') {
  *
  * @param {PipelineEvent} event The latest decision.
  * @param {Readonly<Config>} config Active configuration.
- * @param {string} scene Loop Marcel is performing.
+ * @param {number} tier Energy tier the punks dance to; 0 between songs.
+ * @param {string} cast Who is doing what on the stage.
  * @returns {string} One line per measurement.
  */
-export function overlayText(event, config, scene) {
+export function overlayText(event, config, tier, cast) {
   const bpm = event.bpm === null ? 'none' : `${Math.round(event.bpm)}`;
   return [
-    `state    ${event.state}   scene ${scene}`,
+    `state    ${event.state}   tier ${tier}`,
     `level    ${event.levelDb.toFixed(1)} dB   floor ${event.floorDb.toFixed(1)} dB   need ${(event.floorDb + config.musicOverFloorDb).toFixed(1)} dB`,
     `swing    ${event.swing.toFixed(2)} dB   need at least ${config.minLevelSwingDb}`,
     `pulse    ${event.pulse.toFixed(3)}   need ${config.pulseEnter} to start, ${config.pulseLeave} to stay`,
     `tempo    ${bpm} bpm at ${event.confidence.toFixed(2)}   need ${config.tempoMinConfidence}`,
     `timbre   flatness ${event.flatness.toFixed(2)}   bass ${event.bass.toFixed(2)}   (shown, not asked)`,
     `dance    ${event.danceBpm.toFixed(1)} bpm${event.locked ? '' : ' (default)'}`,
+    `punks    ${cast}`,
   ].join('\n');
 }

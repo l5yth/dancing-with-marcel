@@ -7,9 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 
 Audio-input guided dancing ASCII punk for Veit's birthday.
 
-Marcel dances while music plays, faster for faster music and harder for louder
-music. Between songs he smokes, has a beer, plays the console, or busies
-himself backstage.
+Three punks, Billy, Mo and Spike, dance while music plays, faster for faster
+music and harder for louder music. Between songs they smoke, drink a beer,
+play the N64, watch TV, sit on the amp, spray their hair, or lace their boots.
+One of them may walk off or fall asleep, and a cat may cross the floor.
 
 ## Run
 
@@ -17,15 +18,16 @@ himself backstage.
 2. Open `http://localhost:8080/`
 3. Click start, allow the microphone
 
-The picture fills the window at any size. White on black, nothing else.
+The stage fills the width of the window at any size. White on black, plus five
+accent colours.
 
-He starts dancing 12 to 18 seconds into a song and stops 2 seconds after it
+They start dancing 12 to 18 seconds into a song and stop 2 seconds after it
 ends, or about 25 seconds after if talking follows with no silence.
 
 ## Set the microphone level
 
-Do this once on the machine that listens. Too much gain clips the music and he
-never dances.
+Do this once on the machine that listens. Too much gain clips the music and
+nobody dances.
 
 1. Record the quiet room: `pw-record --channels 1 --rate 44100 room.wav`, stop with Ctrl+C
 2. Record a song at party volume the same way into `song.wav`
@@ -55,8 +57,8 @@ Add parameters to the URL:
 - `?musicOverFloorDb=12&breakUnderFloorDb=8` sets how far over the room music
   must be to start, and to keep going
 - `?musicEnterMs=3000&breakHoldMs=2000` sets the switch delays
-- `?pulseEnter=0.15` sets how much pulse starts him dancing; lower it if he misses songs, raise it if he dances to a room
-- `?pulseLeave=0.09&pulseLeaveMs=10000` set how little pulse stops him, and after how long
+- `?pulseEnter=0.15` sets how much pulse starts them dancing; lower it if they miss songs, raise it if they dance to a room
+- `?pulseLeave=0.09&pulseLeaveMs=10000` set how little pulse stops them, and after how long
 - `?pulseWindow=8` sets how many seconds of pulse are weighed
 - `?minLevelSwingDb=0.1` sets how far the level must move; 0 switches it off
 - `?levelWindowMs=400&timbreWindowMs=1500` set how far back level and timbre
@@ -66,9 +68,8 @@ Add parameters to the URL:
 - `?tempoMinConfidence=0.15` sets how sure a tempo must be to be shown
 - `?defaultBpm=140&bpmSettleMs=3000` set the dance tempo before one is
   detected, and how long a new one must hold
-- `?driveRangeDb=18&sceneHoldMs=12000` set how loud counts as full energy, and
-  how long one dance is held
-- `?breakFrameMs=2400` sets how slowly a between-song scene plays
+- `?driveRangeDb=18` sets how loud counts as full energy
+- `?breakFrameMs=900` sets how long one frame lasts between songs
 
 With `?debug=1` each value is shown next to the threshold it must clear.
 
@@ -93,9 +94,6 @@ npm run eval -- song.mp3 other.mp3 --gap 6
 
 ## Art
 
-`design/gen.js` draws the sprites. `src/sprites/` is generated from it and is
-not edited by hand. After changing the generator:
-
-```
-node design/render.mjs
-```
+- `src/sprites/asciipunk.js` holds the sprites, their colour masks, and the loops
+- The art is approved and pinned: `test/sprites.test.js` fails when a frame changes
+- After an approved change, set `APPROVED` in that test to the digest the failing test prints

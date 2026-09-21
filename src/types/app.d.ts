@@ -19,26 +19,13 @@ type Deferred = () => void;
 /** Where chance comes from, with the shape of `Math.random`. */
 type RandomSource = () => number;
 
-/** A list of loop names that is not to be changed. */
+/** A list of loop names, or of a loop's frame names, that is not to be changed. */
 type LoopList = readonly string[];
 
-/** The dance loops grouped by energy, quietest first. */
-type LoopTiers = readonly LoopList[];
-
-/** What one frame of the sprite sheet is, as the design project describes it. */
-interface FrameMeta {
-  /** `dance` for an on-beat performance frame, `break` for a between-song one. */
-  group: string;
-  /** How much energy the frame carries, from 0 for still to 3 for a chorus. */
-  energy: number;
-}
-
-/** What the scene director needs: the tuning, and a source of chance. */
+/** What the scene director needs. */
 interface SceneOptions {
   /** Thresholds and timings. */
   config: Readonly<Config>;
-  /** Where chance comes from; the default is `Math.random`. */
-  random?: RandomSource;
 }
 
 /** Classifier state (SPEC D2). */
@@ -85,8 +72,6 @@ interface Config {
   bpmSettleMs: number;
   /** How far over the music threshold counts as full energy, in dB. */
   driveRangeDb: number;
-  /** How long one dance scene is held before another of the same energy may follow, in milliseconds. */
-  sceneHoldMs: number;
   /** How long one frame of a between-song scene lasts, in milliseconds. */
   breakFrameMs: number;
 }
@@ -283,4 +268,178 @@ interface Env {
   timers: Timers;
   /** Where chance comes from; the default is `Math.random`. */
   random?: () => number;
+}
+
+/** One of the three punks of the ASCIIpunk sheet. */
+interface Punk {
+  /** Name. */
+  name: string;
+  /** The haircut, in words. */
+  hair: string;
+  /** Whether the hair is bleached, and so coloured by the mask. */
+  bleached: boolean;
+  /** Whether the lips are coloured by the mask. */
+  lipstick: boolean;
+}
+
+/** A drawn sprite: rows of art and a parallel grid of mask letters. */
+interface Sprite {
+  /** The art, top to bottom, right-trimmed. */
+  rows: string[];
+  /** A letter of `PALETTE` for every coloured cell, a space for white. */
+  mask: string[];
+}
+
+/** Where the head of a composed sprite is: the left edge of its eye row. */
+interface SpriteHead {
+  /** Row of the eyes. */
+  row: number;
+  /** Column of the head's left edge. */
+  col: number;
+}
+
+/** A sprite as it comes out of composition. */
+interface ComposedSprite extends Sprite {
+  /** Where the head is, or `null` for a body without one. */
+  head: SpriteHead | null;
+}
+
+/** What is said about a body when it is registered. */
+interface SpriteBodyMeta {
+  /** `dance`, `move`, `break`, or `egg`. */
+  group: string;
+  /** How hard the frame goes, 0 to 3. */
+  energy: number;
+  /** Hair variant: `n`, `b`, `f`, `w`, or `c`. */
+  hair: string;
+  /** Column of the feet. */
+  anchor: number;
+  /** Columns moved per frame in the facing direction. */
+  dx?: number;
+}
+
+/** A registered body: what is said about it, and its drawing. */
+interface SpriteBody extends SpriteBodyMeta {
+  /** The art, top to bottom. */
+  rows: string[];
+  /** Colour mask rows, keyed by the art row they colour. */
+  mask: Record<number, string>;
+}
+
+/** An animal of the sheet: not a punk, and not 16 rows. */
+interface SpriteExtra {
+  /** Always `egg`. */
+  group: string;
+  /** Always 0. */
+  energy: number;
+  /** Column of the feet. */
+  anchor: number;
+  /** Columns moved per frame. */
+  dx: number;
+  /** The art, top to bottom, `@` for a backslash. */
+  rows: string[];
+}
+
+/** What the sheet says about a frame. */
+interface SpriteMeta {
+  /** `dance`, `move`, `break`, or `egg`. */
+  group: string;
+  /** How hard the frame goes, 0 to 3. */
+  energy: number;
+  /** Column of the feet in the right-facing sprite. */
+  anchor: number;
+  /** Width of the box every punk's version of the frame fits in. */
+  width: number;
+  /** Columns moved per frame in the facing direction. */
+  dx: number;
+  /** Where the head is, or `null`. */
+  head: SpriteHead | null;
+  /** Hair variant, for a punk's frame. */
+  hair?: string;
+  /** `l` for the one frame that is drawn facing left. */
+  facing?: string;
+  /** Number of rows, for an animal. */
+  rows?: number;
+}
+
+/** What `mirror` accepts: a sprite whose mask may be missing. */
+interface MirrorInput {
+  /** The art, top to bottom. */
+  rows: string[];
+  /** The mask, when the sprite has one. */
+  mask?: string[];
+}
+
+/** Turns rows of art around. */
+type RowsFlip = (rows: string[]) => string[];
+
+/** Where a punk is in its comings and goings. */
+type Presence = 'off' | 'enter' | 'stage' | 'exit';
+
+/** One punk of the show: where it is and what it is doing (SPEC F4). */
+interface PunkState {
+  /** Key into `PUNKS` and `SPRITES`. */
+  id: string;
+  /** Column it stands on. */
+  home: number;
+  /** Column of its feet. */
+  x: number;
+  /** 1 facing right, -1 facing left. */
+  facing: number;
+  /** Name of the loop it performs. */
+  loop: string;
+  /** Frames of that loop. */
+  frames: LoopList;
+  /** Index of the frame showing. */
+  index: number;
+  /** Frames since the loop began. */
+  held: number;
+  /** Off stage, walking on, on stage, or walking off. */
+  state: Presence;
+  /** The between-song scene it was dealt. */
+  scene: string;
+}
+
+/** An animal crossing the floor (SPEC F6). */
+interface AnimalState {
+  /** Which animal; also its key in `EGGS`. */
+  kind: 'cat' | 'rabbit';
+  /** Frames of its loop. */
+  frames: LoopList;
+  /** Index of the frame showing. */
+  index: number;
+  /** Column of its feet. */
+  x: number;
+}
+
+/** A sprite and where its top left corner goes on the stage. */
+interface Placement {
+  /** The sprite, already facing the right way. */
+  sprite: Sprite;
+  /** Column of its left edge; may be off the stage. */
+  left: number;
+  /** Row of its top edge. */
+  top: number;
+}
+
+/** What a show is made with. */
+interface ShowOptions {
+  /** Where chance comes from; the default is `Math.random`. */
+  random?: RandomSource;
+}
+
+/** The picture of a moment: a grid of characters, and the mask letter of each. */
+interface Grid {
+  /** The characters, row by row. */
+  chars: string[][];
+  /** A letter of `PALETTE` for a coloured cell, a space for a white one. */
+  inks: string[][];
+}
+
+/** A stretch of a row drawn in one colour. */
+interface Run {
+  /** The characters. */
+  text: string;
+  /** The letter of `PALETTE` it is drawn in, or the empty string for white. */
+  ink: string;
 }

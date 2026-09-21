@@ -17,7 +17,8 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { collectCss, findViolations, stripComments } from './helpers/monochrome.js';
+import { PALETTE } from '../src/sprites/asciipunk.js';
+import { collectCss, declarations, findViolations, stripComments } from './helpers/monochrome.js';
 
 const read = (/** @type {string} */ path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -37,13 +38,34 @@ function filesUnder(dir, pattern) {
 }
 
 describe('monochrome', () => {
-  it('A6: the shipped CSS and HTML use only #000 and #fff', () => {
+  it('A6: the shipped CSS uses only #000, #fff and the five accents, and the HTML no accent', () => {
     const sheets = filesUnder('src', /\.css$/);
     assert.ok(sheets.length >= 1);
     for (const path of sheets) {
-      assert.deepEqual(findViolations(read(path)), [], path);
+      assert.deepEqual(findViolations(read(path), Object.values(PALETTE)), [], path);
     }
     assert.deepEqual(findViolations(collectCss(read('index.html'))), [], 'index.html');
+  });
+
+  it('A6: an accent reaches the page only as the class of its mask letter', () => {
+    // One rule a letter, `.sheet .y { color: … }`, holding the sheet's own
+    // value: a stylesheet that drifts from PALETTE, or spends an accent on
+    // anything that is not a sprite's mask, fails here.
+    const css = stripComments(read('src/style.css'));
+    const rules = [...css.matchAll(/\.sheet \.([a-z])\s*\{\s*color:\s*(#[0-9a-f]{6});\s*\}/g)];
+    assert.deepEqual(Object.fromEntries(rules.map((rule) => [rule[1], rule[2]])), { ...PALETTE });
+    const accents = Object.values(PALETTE);
+    const spent = declarations(css).filter(({ value }) =>
+      accents.some((accent) => value.toLowerCase().includes(accent)),
+    );
+    assert.equal(spent.length, accents.length, 'an accent is used outside its mask class');
+  });
+
+  it('A6: an accent nobody vouches for is still a violation', () => {
+    assert.equal(findViolations('p { color: #ffd21e; }').length, 1);
+    assert.deepEqual(findViolations('p { color: #FFD21E; }', ['#ffd21e']), []);
+    assert.equal(findViolations('p { color: #ffd21f; }', ['#ffd21e']).length, 1);
+    assert.equal(findViolations('p { border-color: gold; }', ['#ffd21e']).length, 1);
   });
 
   it('A6: links are given the foreground color, since a browser would make them blue', () => {

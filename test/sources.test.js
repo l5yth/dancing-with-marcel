@@ -57,11 +57,11 @@ function importsOf(path) {
 describe('sources', () => {
   // The coverage report lists only files a test loaded, so a module no test
   // reaches would slip past the 100% gate. A test need not name every module:
-  // naming one that imports it is enough, which is how the sprite sheet's
-  // thirty-two frames are covered by the index that collects them.
+  // naming one that imports it is enough.
   it('B2: every source module is reached by a test, directly or through an import', () => {
     const modules = [...filesUnder('src', /\.js$/), ...filesUnder('scripts', /\.mjs$/)];
-    assert.ok(modules.length > 30);
+    // Enough of them that a search gone wrong, finding nothing, cannot pass.
+    assert.ok(modules.length > 20, `only ${modules.length} modules found`);
     const tests = filesUnder('test', /\.js$/).map(read).join('\n');
 
     const reached = new Set(modules.filter((path) => tests.includes(path)));

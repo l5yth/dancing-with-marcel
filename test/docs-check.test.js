@@ -51,6 +51,30 @@ function fakeSpawn(results) {
 }
 
 describe('docs check', () => {
+  it('B3: a loop binding at module level is not API, a constant beside it is', () => {
+    // JSDoc has no block scope, so `for (const punk of ...)` at the top of a
+    // module comes out as a global constant. It is told apart by having no
+    // initializer, which no other const can lack.
+    const at = (/** @type {number} */ lineno) => ({ path: '/src', filename: 'sheet.js', lineno });
+    const found = findUndocumented([
+      {
+        kind: 'constant',
+        scope: 'global',
+        longname: 'punk',
+        undocumented: true,
+        meta: { ...at(3), code: { name: 'punk' } },
+      },
+      {
+        kind: 'constant',
+        scope: 'global',
+        longname: 'width',
+        undocumented: true,
+        meta: { ...at(4), code: { name: 'width', type: 'CallExpression' } },
+      },
+    ]);
+    assert.deepEqual(found, ['sheet.js:4 constant width']);
+  });
+
   it('B3: findUndocumented lists undocumented API symbols and ignores twins and noise', () => {
     const at = (/** @type {string} */ filename, /** @type {number} */ lineno) => ({
       path: '/repo/src',

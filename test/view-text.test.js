@@ -46,8 +46,9 @@ describe('view text', () => {
       danceBpm: 179.6,
       locked: true,
     };
-    const lines = overlayText(event, DEFAULTS, 'headbang').split('\n');
-    assert.equal(lines[0], 'state    music   scene headbang');
+    const cast = 'billy headbang, mo pogo, spike off, cat';
+    const lines = overlayText(event, DEFAULTS, 3, cast).split('\n');
+    assert.equal(lines[0], 'state    music   tier 3');
     assert.match(lines[1], /^level\s+-31\.2 dB\s+floor -58\.5 dB\s+need -46\.5 dB$/);
     assert.match(lines[2], /^swing\s+1\.28 dB\s+need at least 0\.1$/);
     // The question that decides, with both of its bars.
@@ -56,6 +57,9 @@ describe('view text', () => {
     // Still measured, no longer asked: a bar beside them would be a lie.
     assert.match(lines[5], /^timbre\s+flatness 0\.42\s+bass 0\.71\s+\(shown, not asked\)$/);
     assert.equal(lines[6], 'dance    179.6 bpm');
+    // Three of them now, so who does what has a line of its own.
+    assert.equal(lines[7], `punks    ${cast}`);
+    assert.equal(lines.length, 8);
   });
 
   it('unit: the overlay says when no tempo has been found and the dance speed is a guess', () => {
@@ -74,8 +78,8 @@ describe('view text', () => {
       danceBpm: DEFAULTS.defaultBpm,
       locked: false,
     };
-    const lines = overlayText(event, DEFAULTS, 'smoke').split('\n');
-    assert.match(lines[0], /^state\s+break\s+scene smoke$/);
+    const lines = overlayText(event, DEFAULTS, 0, 'billy smoke, mo tv, spike lace').split('\n');
+    assert.match(lines[0], /^state\s+break\s+tier 0$/);
     assert.match(lines[2], /^swing\s+0\.00 dB/);
     assert.match(lines[3], /^pulse\s+0\.000/);
     assert.match(lines[4], /^tempo\s+none bpm at 0\.00/);

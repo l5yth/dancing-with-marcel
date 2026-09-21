@@ -15,23 +15,28 @@
 */
 
 /**
- * @file Wiring: page elements, capture, the pipeline, and the stage. Browser
- * globals arrive through the `Env` type, so the wiring runs in unit tests.
+ * @file Wiring: page elements, capture, the pipeline, the show, and the stage.
+ * Browser globals arrive through the `Env` type, so the wiring runs in unit
+ * tests.
  *
- * Marcel performs from the moment the page opens, before the microphone is
- * allowed: he is between songs until there is something to hear.
+ * The show runs from the moment the page opens, before the microphone is
+ * allowed: it is between songs until there is something to hear.
  */
 
 import { Capture } from './audio/capture.js';
 import { debugLabel } from './classify/label.js';
 import { Pipeline } from './classify/pipeline.js';
 import { SceneDirector } from './classify/scene.js';
+import { Show } from './classify/show.js';
 import { isDebug, parseConfig } from './config.js';
 import { Stage } from './view/stage.js';
 import { overlayText, statusText } from './view/text.js';
 
 /** Milliseconds of audio between two refreshes of the debug overlay. */
 const OVERLAY_INTERVAL_MS = 100;
+
+/** Frames per beat while dancing: an eighth note each. */
+const FRAMES_PER_BEAT = 2;
 
 /**
  * Look up a page element that must exist.
@@ -51,11 +56,11 @@ function element(document, id) {
 
 /**
  * Wire the page: the start button begins capture, every frame feeds the
- * pipeline, and the stage performs what the pipeline decides.
+ * pipeline, the show follows what the pipeline decides, and the stage draws it.
  *
  * @param {Env} env Browser globals.
- * @returns {{capture: Capture, director: SceneDirector, stage: Stage}} What was
- *   wired, so a test can see the wiring and not merely its effects.
+ * @returns {{capture: Capture, director: SceneDirector, show: Show, stage: Stage}}
+ *   What was wired, so a test can see the wiring and not merely its effects.
  */
 export function boot(env) {
   const { document, location, navigator, window } = env;
@@ -69,22 +74,40 @@ export function boot(env) {
   element(document, 'repo').hidden = !debug;
 
   const stage = new Stage({ element: element(document, 'stage'), document });
-  const director = new SceneDirector({ config, random: env.random });
+  const director = new SceneDirector({ config });
+  const show = new Show({ random: env.random });
   /** @type {Pipeline | null} */
   let pipeline = null;
   /** @type {PipelineEvent | null} */
   let last = null;
   let overlayMs = 0;
+  let danceBpm = config.defaultBpm;
+  // When the next tick is due, in milliseconds since the page started.
+  let dueMs = 0;
+  // Whether the show has something new to draw before a tick moves it on.
+  let fresh = true;
 
   const fit = () => stage.fit(window.innerWidth, window.innerHeight);
+  // Dancing is locked to the beat: a frame per eighth note at the detected
+  // tempo. Between songs there is no beat to follow, and the pace is unhurried.
+  const tickMs = () => (show.dancing ? 60000 / danceBpm / FRAMES_PER_BEAT : config.breakFrameMs);
   const paint = (/** @type {number} */ elapsedMs) => {
-    stage.draw({
-      loop: director.loop,
-      elapsedMs,
-      danceBpm: last?.danceBpm ?? config.defaultBpm,
-      dancing: last?.state === 'music',
-      breakFrameMs: config.breakFrameMs,
-    });
+    if (fresh) {
+      // Whoever was given something new to do opens on its first frame and
+      // holds it a whole tick: ticking first would open every dance on its
+      // second frame, and a two-frame scene on the wrong one.
+      fresh = false;
+      dueMs = elapsedMs + tickMs();
+      stage.draw(show.placements());
+    } else if (elapsedMs >= dueMs) {
+      const step = tickMs();
+      // Ticks keep their phase while the page keeps up. After a stall, a tab
+      // left in the background, they start again from now and do not race
+      // through what was missed.
+      dueMs = elapsedMs - dueMs > step ? elapsedMs + step : dueMs + step;
+      show.tick();
+      stage.draw(show.placements());
+    }
     window.requestAnimationFrame(paint);
   };
 
@@ -96,25 +119,26 @@ export function boot(env) {
     timers: env.timers,
     visibility: document,
     wakeLock: navigator.wakeLock,
-    /** Feed one frame to the pipeline and let it choose the scene. */
+    /** Feed one frame to the pipeline and let the show hear what it decides. */
     onFrame(frame, sampleRate) {
       pipeline ??= new Pipeline({ config, sampleRate });
       for (const event of pipeline.push(frame)) {
         last = event;
-        director.update(event, pipeline.hopMs);
+        danceBpm = event.danceBpm;
+        fresh = show.hear(event.state === 'music', director.update(event)) || fresh;
         label.textContent = debugLabel(event.state, event.locked ? event.danceBpm : null);
       }
       overlayMs += (frame.length / sampleRate) * 1000;
       if (debug && last !== null && overlayMs >= OVERLAY_INTERVAL_MS) {
         overlayMs = 0;
-        overlay.textContent = overlayText(last, config, director.loop);
+        overlay.textContent = overlayText(last, config, director.tier, show.caption());
       }
     },
     /**
-     * Show the panel until capture runs, then get out of Marcel's way. Debug
-     * is no exception: the centred label would sit across his chest, which is
-     * where you are looking while tuning a threshold, and the overlay names
-     * the state in its first line anyway.
+     * Show the panel until capture runs, then get out of the way. Debug is no
+     * exception: the centred label would sit across the punk in the middle,
+     * which is where you are looking while tuning a threshold, and the overlay
+     * names the state in its first line anyway.
      */
     onStatus(status, detail) {
       const running = status === 'running';
@@ -139,5 +163,5 @@ export function boot(env) {
     fit();
   });
   window.requestAnimationFrame(paint);
-  return { capture, director, stage };
+  return { capture, director, show, stage };
 }

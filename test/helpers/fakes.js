@@ -241,7 +241,8 @@ export function createFakeScreen({ hidden = false, refuse = false } = {}) {
 }
 
 /**
- * A fake page with the three elements the app looks up.
+ * A fake page with the elements the app looks up, which can make elements and
+ * text nodes and hold them as children.
  *
  * @param {object} [options] Options.
  * @param {string[]} [options.missing] Ids to leave out.
@@ -260,7 +261,21 @@ export function createFakeDocument({ missing = [], cell = { width: 60, height: 8
     id,
     className: '',
     hidden: false,
-    textContent: '',
+    /** Text set on the element itself; its children's text is read through them. */
+    text: '',
+    children: /** @type {any[]} */ ([]),
+    get textContent() {
+      return this.children.length === 0
+        ? this.text
+        : this.children.map((/** @type {any} */ child) => child.textContent).join('');
+    },
+    set textContent(value) {
+      this.text = String(value);
+      this.children = [];
+    },
+    replaceChildren(/** @type {any[]} */ ...nodes) {
+      this.children = nodes;
+    },
     style: /** @type {Record<string, string>} */ ({}),
     listeners: /** @type {Record<string, () => unknown>} */ ({}),
     addEventListener(/** @type {string} */ type, /** @type {() => unknown} */ listener) {
@@ -320,8 +335,22 @@ export function createFakeDocument({ missing = [], cell = { width: 60, height: 8
       created.push(node);
       return node;
     },
+    createTextNode(/** @type {string} */ text) {
+      return { nodeType: 3, textContent: String(text) };
+    },
     getElementById: (/** @type {string} */ id) => elements[id] ?? null,
   };
+}
+
+/**
+ * What a stage element shows, a line of text for every row: the text of each
+ * row's runs, joined. `textContent` would run the rows together.
+ *
+ * @param {any} element The stage element of a fake page.
+ * @returns {string} The rows, newline separated.
+ */
+export function pictureOf(element) {
+  return element.children.map((/** @type {any} */ line) => line.textContent).join('\n');
 }
 
 /**

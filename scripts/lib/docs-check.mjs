@@ -29,12 +29,21 @@ import { join } from 'node:path';
 const DOCUMENTED_KINDS = new Set(['function', 'class', 'typedef', 'constant', 'namespace']);
 
 /**
+ * What JSDoc's parser saw where a symbol is declared.
+ *
+ * @typedef {object} DocletCode
+ * @property {string} [name] The declared name.
+ * @property {string} [type] Node type of the initializer; absent when there is none.
+ */
+
+/**
  * Where a doclet lives.
  *
  * @typedef {object} DocletMeta
  * @property {string} [path] Directory of the source file.
  * @property {string} [filename] Source file name.
  * @property {number} [lineno] Line number.
+ * @property {DocletCode} [code] What the parser saw at the symbol.
  */
 
 /**
@@ -68,14 +77,19 @@ const DOCUMENTED_KINDS = new Set(['function', 'class', 'typedef', 'constant', 'n
  * Whether a symbol needs a doc comment: functions, classes, typedefs,
  * constants, namespaces, and class fields. Object-literal properties,
  * function-local symbols, and element writes such as `this.ring[index] = x`
- * (JSDoc reports them as members with a computed name) are not API.
+ * (JSDoc reports them as members with a computed name) are not API. Neither is
+ * the binding of a `for...of` at module level, which JSDoc, having no block
+ * scope, reports as a global constant: it is told apart by having no
+ * initializer, which no other `const` can lack.
  *
  * @param {Doclet} doclet A doclet.
  * @returns {boolean} `true` when the symbol must be documented.
  */
 function needsDocs(doclet) {
+  const loopBinding = doclet.kind === 'constant' && doclet.meta?.code?.type === undefined;
   return (
     doclet.scope !== 'inner' &&
+    !loopBinding &&
     !doclet.longname.includes('<anonymous>') &&
     !doclet.longname.includes('[') &&
     (DOCUMENTED_KINDS.has(doclet.kind) || (doclet.kind === 'member' && doclet.scope === 'instance'))

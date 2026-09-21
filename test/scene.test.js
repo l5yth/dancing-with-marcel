@@ -14,14 +14,17 @@
    limitations under the License.
 */
 
+/**
+ * @file The scene director (SPEC D3, F5; ACCEPTANCE C8): how hard the room is
+ * going, as a tier the punks dance to. Which loop each of them does with it is
+ * the show's business, and C22's.
+ */
+
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { BREAK_LOOPS, DANCE_LOOPS, LOOP_ENERGY, SceneDirector } from '../src/classify/scene.js';
+import { SceneDirector } from '../src/classify/scene.js';
+import { dancesOf } from '../src/classify/show.js';
 import { DEFAULTS } from '../src/config.js';
-import { LOOPS } from '../src/sprites/index.js';
-import { mulberry32 } from './helpers/synth.js';
-
-const HOP_MS = (512 / 44100) * 1000;
 
 /**
  * A pipeline event, with the fields the director reads.
@@ -36,8 +39,8 @@ function event(fields) {
     floorDb: -60,
     flatness: 0.3,
     bass: 0.5,
-    flux: 1,
-    onsets: 20,
+    swing: 1,
+    pulse: 0.3,
     state: 'music',
     bpm: 140,
     confidence: 0.5,
@@ -47,123 +50,53 @@ function event(fields) {
   };
 }
 
-/**
- * A director whose chance is a fixed sequence.
- *
- * @param {number[]} draws What `random()` returns, in order, repeating.
- * @returns {SceneDirector} The director.
- */
-function director(draws) {
-  let index = 0;
-  return new SceneDirector({
-    config: DEFAULTS,
-    random: () => draws[index++ % draws.length],
-  });
-}
-
-/**
- * Feed one event repeatedly.
- *
- * @param {SceneDirector} scene The director.
- * @param {PipelineEvent} what The event.
- * @param {number} ms How long to feed it.
- * @returns {string} The loop at the end.
- */
-function hold(scene, what, ms) {
-  let loop = scene.loop;
-  for (let elapsed = 0; elapsed < ms; elapsed += HOP_MS) {
-    loop = scene.update(what, HOP_MS);
-  }
-  return loop;
-}
-
 describe('scene director', () => {
-  it('C8: every loop of the sprite sheet is reachable, and none is listed twice', () => {
-    const all = [...BREAK_LOOPS, ...DANCE_LOOPS.flat()];
-    assert.deepEqual([...all].sort(), Object.keys(LOOPS).sort());
-    assert.equal(new Set(all).size, all.length);
-    assert.equal(BREAK_LOOPS.length, 4);
-    assert.deepEqual(BREAK_LOOPS, ['smoke', 'beer', 'n64', 'backstage']);
-  });
-
-  it('C8: a loop carries the energy of its strongest frame', () => {
-    assert.equal(LOOP_ENERGY.idle, 1);
-    assert.equal(LOOP_ENERGY.stomp, 2);
-    assert.equal(LOOP_ENERGY.climax, 3);
-    for (const loop of BREAK_LOOPS) {
-      assert.equal(LOOP_ENERGY[loop], 0, loop);
-    }
-  });
-
-  it('C8: a break draws one between-song scene and keeps it to the end', () => {
-    for (const [draw, expected] of [
-      [0, 'smoke'],
-      [0.3, 'beer'],
-      [0.6, 'n64'],
-      [0.99, 'backstage'],
-    ]) {
-      const scene = director([Number(draw)]);
-      const first = scene.update(event({ state: 'break' }), HOP_MS);
-      assert.equal(first, expected);
-      assert.equal(hold(scene, event({ state: 'break' }), 60000), expected, 'held for a minute');
-    }
-  });
-
-  it('C8: chance is drawn once per break, not once per frame', () => {
-    let draws = 0;
-    const scene = new SceneDirector({
-      config: DEFAULTS,
-      random: () => {
-        draws += 1;
-        return 0.1;
-      },
-    });
-    hold(scene, event({ state: 'break' }), 30000);
-    assert.equal(draws, 1);
-    hold(scene, event({ state: 'music', levelDb: -20 }), 5000);
-    hold(scene, event({ state: 'break' }), 30000);
-    assert.equal(draws, 3, 'one for the dance, one for the second break');
-  });
-
-  it('C8: over many breaks every between-song scene comes up', () => {
-    const random = mulberry32(0xc0ffee);
-    const scene = new SceneDirector({ config: DEFAULTS, random });
-    /** @type {Record<string, number>} */
-    const seen = {};
-    for (let round = 0; round < 400; round += 1) {
-      hold(scene, event({ state: 'music' }), 1500);
-      const loop = hold(scene, event({ state: 'break' }), 1500);
-      seen[loop] = (seen[loop] ?? 0) + 1;
-    }
-    assert.deepEqual(Object.keys(seen).sort(), [...BREAK_LOOPS].sort());
-    for (const loop of BREAK_LOOPS) {
-      assert.ok(seen[loop] > 400 * 0.15, `${loop} came up ${seen[loop]} times`);
-    }
-  });
-
-  it('C8: how hard the room goes decides which dance he does', () => {
-    // Quiet and slow, then loud and fast, at the same tempo range.
-    const quiet = director([0]);
-    assert.ok(
-      DANCE_LOOPS[0].includes(hold(quiet, event({ levelDb: -47, danceBpm: 100 }), 3000)),
-      'a quiet verse gets a low-energy loop',
+  it('C8: between songs the tier is 0, and it is before anything has been heard', () => {
+    const scene = new SceneDirector({ config: DEFAULTS });
+    assert.deepEqual([scene.tier, scene.drive], [0, 0]);
+    assert.equal(scene.update(event({ state: 'break', levelDb: -10, danceBpm: 190 })), 0);
+    assert.deepEqual(
+      [scene.tier, scene.drive],
+      [0, 0],
+      'a loud room between songs is still a break',
     );
-    const loud = director([0]);
-    assert.ok(
-      DANCE_LOOPS[2].includes(hold(loud, event({ levelDb: -20, danceBpm: 185 }), 3000)),
-      'a loud fast chorus gets a high-energy loop',
-    );
-    const middle = director([0]);
-    assert.ok(
-      DANCE_LOOPS[1].includes(hold(middle, event({ levelDb: -39, danceBpm: 140 }), 3000)),
-      'a groove gets a mid-energy loop',
-    );
+  });
+
+  it('C8: how hard the room goes decides the tier', () => {
+    const scene = new SceneDirector({ config: DEFAULTS });
+    // Quiet and slow, a groove, then loud and fast.
+    assert.equal(scene.update(event({ levelDb: -47, danceBpm: 100 })), 1, 'a quiet verse');
+    assert.equal(scene.update(event({ levelDb: -39, danceBpm: 140 })), 2, 'a groove');
+    assert.equal(scene.update(event({ levelDb: -20, danceBpm: 185 })), 3, 'a loud fast chorus');
+    assert.equal(scene.tier, 3);
+    // A change of energy is reported at once, and so is the end of the song.
+    assert.equal(scene.update(event({ levelDb: -47, danceBpm: 100 })), 1);
+    assert.equal(scene.update(event({ state: 'break' })), 0);
+  });
+
+  it('C8: the tiers meet at a third and two thirds of drive, and every tier has dances', () => {
+    const scene = new SceneDirector({ config: DEFAULTS });
+    // Level alone, at the slowest tempo: drive is 0.6 of how far over the bar.
+    const at = (/** @type {number} */ drive) =>
+      scene.update(
+        event({
+          levelDb: -60 + DEFAULTS.musicOverFloorDb + (drive / 0.6) * DEFAULTS.driveRangeDb,
+          danceBpm: DEFAULTS.bpmMin,
+        }),
+      );
+    assert.deepEqual([at(0), at(0.32), at(0.34), at(0.59)], [1, 1, 2, 2]);
+    // Everything at once is still a tier the sheet has.
+    assert.equal(scene.update(event({ levelDb: 0, danceBpm: 400 })), 3);
+    assert.equal(scene.drive, 1);
+    for (const tier of [1, 2, 3]) {
+      assert.ok(dancesOf(tier).length >= 3, `tier ${tier}`);
+    }
   });
 
   it('C8: level weighs more than tempo, so loud and slow beats quiet and fast', () => {
     // Every earlier case moved level and tempo together, which any blend of
     // the two would pass. These pull them apart.
-    const scene = director([0]);
+    const scene = new SceneDirector({ config: DEFAULTS });
     const loudSlow = scene.driveOf(event({ levelDb: -30, danceBpm: DEFAULTS.bpmMin }));
     const quietFast = scene.driveOf(event({ levelDb: -48, danceBpm: DEFAULTS.bpmMax }));
     assert.ok(loudSlow > quietFast, `loud and slow ${loudSlow}, quiet and fast ${quietFast}`);
@@ -172,7 +105,7 @@ describe('scene director', () => {
   });
 
   it('C8: drive runs from 0 to 1 and never leaves it', () => {
-    const scene = director([0]);
+    const scene = new SceneDirector({ config: DEFAULTS });
     assert.equal(scene.driveOf(event({ levelDb: -48, danceBpm: DEFAULTS.bpmMin })), 0);
     assert.equal(scene.driveOf(event({ levelDb: 0, danceBpm: DEFAULTS.bpmMax })), 1);
     for (const levelDb of [-120, -60, -30, 0]) {
@@ -181,29 +114,5 @@ describe('scene director', () => {
         assert.ok(drive >= 0 && drive <= 1, `${drive}`);
       }
     }
-  });
-
-  it('C8: a dance is held for sceneHoldMs before another of the same energy may follow', () => {
-    const scene = director([0, 0.99]);
-    const playing = event({ levelDb: -20, danceBpm: 185 });
-    const first = hold(scene, playing, 200);
-    assert.equal(hold(scene, playing, DEFAULTS.sceneHoldMs - 500), first, 'still the same dance');
-    const next = hold(scene, playing, 1000);
-    assert.notEqual(next, first);
-    assert.ok(DANCE_LOOPS[2].includes(next), 'and still a high-energy one');
-  });
-
-  it('C8: a change of energy switches the dance at once', () => {
-    const scene = director([0]);
-    const soft = hold(scene, event({ levelDb: -47, danceBpm: 100 }), 2000);
-    assert.ok(DANCE_LOOPS[0].includes(soft));
-    const hard = hold(scene, event({ levelDb: -20, danceBpm: 185 }), 200);
-    assert.ok(DANCE_LOOPS[2].includes(hard), 'without waiting out the hold');
-  });
-
-  it('C8: he is between songs before anything has been heard', () => {
-    const scene = new SceneDirector({ config: DEFAULTS });
-    assert.ok(BREAK_LOOPS.includes(scene.loop));
-    assert.equal(scene.state, 'break');
   });
 });

@@ -15,10 +15,11 @@
 */
 
 /**
- * @file Monochrome checker (SPEC invariant 5): only `#000` and `#fff`, and none
- * of the effects that would produce grey (alpha, gradients, shadows, blur,
- * filters). Named colors are caught on color-carrying properties; a named
- * color inside an arbitrary custom property is a known limit.
+ * @file Monochrome checker (SPEC invariant 5): only `#000` and `#fff`, plus
+ * whatever accents the caller vouches for, and none of the effects that would
+ * produce grey (alpha, gradients, shadows, blur, filters). Named colors are
+ * caught on color-carrying properties; a named color inside an arbitrary
+ * custom property is a known limit.
  */
 
 const COLOR_PROPERTY =
@@ -74,11 +75,15 @@ export function collectCss(html) {
  * Find everything in a piece of CSS that breaks the monochrome rule.
  *
  * @param {string} css CSS source.
+ * @param {string[]} [accents] Hex colors allowed beside black and white, as
+ *   the sprite sheet's `PALETTE` writes them.
  * @returns {string[]} One `property: value` line per violation.
  */
-export function findViolations(css) {
+export function findViolations(css, accents = []) {
   /** @type {string[]} */
   const violations = [];
+  const allowed = (/** @type {string} */ token) =>
+    ALLOWED_COLOR.test(token) || accents.includes(token.toLowerCase());
   for (const { property, value } of declarations(css)) {
     const line = `${property}: ${value}`;
     if (EFFECT_PROPERTY.test(property) || EFFECT_VALUE.test(value)) {
@@ -88,8 +93,8 @@ export function findViolations(css) {
     for (const token of value.split(/[\s,]+/).filter(Boolean)) {
       const colorLike = COLOR_LITERAL.test(token);
       const unknownOnColorProperty =
-        COLOR_PROPERTY.test(property) && !ALLOWED_COLOR.test(token) && !NEUTRAL_TOKEN.test(token);
-      if ((colorLike && !ALLOWED_COLOR.test(token)) || (!colorLike && unknownOnColorProperty)) {
+        COLOR_PROPERTY.test(property) && !allowed(token) && !NEUTRAL_TOKEN.test(token);
+      if ((colorLike && !allowed(token)) || (!colorLike && unknownOnColorProperty)) {
         violations.push(line);
         break;
       }

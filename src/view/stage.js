@@ -15,24 +15,23 @@
 */
 
 /**
- * @file The stage: draws one frame of the sprite sheet, as large as the window
- * allows (SPEC D10).
+ * @file The stage: draws the show on the page, as large as the window allows
+ * (SPEC F2, F3).
  *
- * The sheet is a fixed grid of characters, so fitting it is a font-size
+ * The stage is a fixed grid of characters, so fitting it is a font-size
  * problem, not a layout one. The cell is measured from the page rather than
  * assumed, because a missing Courier falls back to whatever monospace the
  * machine has and those differ in width; the art would then be clipped on a
  * projector nobody can re-run.
  *
- * Dancing is locked to the beat: one frame per eighth note at the detected
- * tempo, so the loop speeds up with the music. A between-song scene has no
- * beat to follow and runs at a fixed, unhurried rate.
+ * Colour comes from a sprite's mask, a letter per cell. A run of one letter is
+ * an element with that letter for a class, and the stylesheet gives the class
+ * its colour; white is plain text. Everything is built as nodes and nothing as
+ * markup, since the art is full of `<`, `>` and `&`.
  */
 
-import { FRAMES, LOOPS, SHEET } from '../sprites/index.js';
-
-/** Frames per beat while dancing: an eighth note each. */
-const FRAMES_PER_BEAT = 2;
+import { STAGE } from '../classify/show.js';
+import { compose, runsOf } from './grid.js';
 
 /** Font size the cell is measured at, in pixels. Large enough to measure precisely. */
 const PROBE_PX = 100;
@@ -40,49 +39,13 @@ const PROBE_PX = 100;
 /** Rows the probe renders, to average out rounding in the line height. */
 const PROBE_ROWS = 10;
 
-/**
- * The art of one frame as a single block of text.
- *
- * @type {Map<string, string>}
- */
-const joined = new Map();
-
-/**
- * One frame's art, joined and cached.
- *
- * @param {string} name Frame name.
- * @returns {string} The rows, newline separated.
- */
-export function frameText(name) {
-  let text = joined.get(name);
-  if (text === undefined) {
-    text = FRAMES[name].join('\n');
-    joined.set(name, text);
-  }
-  return text;
-}
-
-/**
- * Which frame of a loop is showing at a moment.
- *
- * @param {string} loop Loop name.
- * @param {number} elapsedMs Milliseconds since the page started.
- * @param {number} frameMs How long one frame lasts.
- * @returns {string} The frame name.
- */
-export function frameAt(loop, elapsedMs, frameMs) {
-  const names = LOOPS[loop];
-  const step = Math.floor(Math.max(0, elapsedMs) / frameMs);
-  return names[step % names.length];
-}
-
-/** Draws the sprite sheet into a page element, sized to the window. */
+/** Draws the show into a page element, sized to the window. */
 export class Stage {
   /**
-   * Create a stage over an element, with nothing drawn yet.
+   * Create a stage over an element, with one empty line for every row.
    *
    * @param {{element: HTMLElement, document: Document}} options The element to
-   *   draw into, and the page the probe is measured in.
+   *   draw into, and the page its nodes are made in.
    */
   constructor({ element, document }) {
     /**
@@ -91,30 +54,26 @@ export class Stage {
      */
     this.element = element;
     /**
-     * Page the probe is measured in.
+     * Page the nodes are made in and the probe is measured in.
      * @type {Document}
      */
     this.document = document;
     /**
-     * Frame currently drawn, so an unchanged frame is not written again.
-     * @type {string}
+     * One element for every row of the grid, top to bottom.
+     * @type {HTMLElement[]}
      */
-    this.showing = '';
+    this.lines = Array.from({ length: STAGE.rows }, () => document.createElement('div'));
     /**
-     * Loop currently being performed, so a switch can be noticed.
-     * @type {string}
+     * What each line shows, so a row that has not changed is not built again.
+     * @type {string[]}
      */
-    this.performing = '';
-    /**
-     * When the current loop began, in milliseconds since the page started.
-     * @type {number}
-     */
-    this.openedMs = 0;
+    this.showing = this.lines.map(() => '');
     /**
      * Size of one character cell at {@link PROBE_PX}, or `null` before it is measured.
      * @type {{width: number, height: number} | null}
      */
     this.cell = null;
+    element.replaceChildren(...this.lines);
   }
 
   /**
@@ -125,7 +84,7 @@ export class Stage {
    */
   measureCell() {
     const probe = this.document.createElement('pre');
-    probe.textContent = Array.from({ length: PROBE_ROWS }, () => 'M'.repeat(SHEET.cols)).join('\n');
+    probe.textContent = Array.from({ length: PROBE_ROWS }, () => 'M'.repeat(STAGE.cols)).join('\n');
     probe.className = this.element.className;
     probe.style.position = 'absolute';
     probe.style.visibility = 'hidden';
@@ -133,7 +92,7 @@ export class Stage {
     this.document.body.appendChild(probe);
     const box = probe.getBoundingClientRect();
     probe.remove();
-    return { width: box.width / SHEET.cols, height: box.height / PROBE_ROWS };
+    return { width: box.width / STAGE.cols, height: box.height / PROBE_ROWS };
   }
 
   /**
@@ -147,45 +106,54 @@ export class Stage {
   fit(width, height) {
     this.cell ??= this.measureCell();
     const scale = Math.min(
-      width / (SHEET.cols * this.cell.width),
-      height / (SHEET.rows * this.cell.height),
+      width / (STAGE.cols * this.cell.width),
+      height / (STAGE.rows * this.cell.height),
     );
     const size = Math.max(1, PROBE_PX * scale);
     this.element.style.fontSize = `${size}px`;
     // The rows are right-trimmed, so the box would otherwise be as wide as the
-    // longest line of the frame showing and Marcel would drift as he moves.
-    // Pinning it to the whole grid keeps him where the design put him.
-    this.element.style.width = `${(SHEET.cols * this.cell.width * size) / PROBE_PX}px`;
-    this.element.style.height = `${(SHEET.rows * this.cell.height * size) / PROBE_PX}px`;
+    // longest line showing and the punks would drift as they move. Pinning it
+    // to the whole grid keeps column 60 in the middle of the window.
+    this.element.style.width = `${(STAGE.cols * this.cell.width * size) / PROBE_PX}px`;
+    this.element.style.height = `${(STAGE.rows * this.cell.height * size) / PROBE_PX}px`;
     return size;
   }
 
   /**
-   * Draw the frame a loop is showing at a moment.
+   * The node that draws one run: plain text for white, and an element with the
+   * mask letter for a class for an accent.
    *
-   * @param {object} moment What to draw.
-   * @param {string} moment.loop Loop name.
-   * @param {number} moment.elapsedMs Milliseconds since the page started.
-   * @param {number} moment.danceBpm Tempo to dance at, in beats per minute.
-   * @param {boolean} moment.dancing Whether the beat drives the loop.
-   * @param {number} moment.breakFrameMs How long a between-song frame lasts.
-   * @returns {string} The frame name drawn.
+   * @param {Run} run The run.
+   * @returns {Node} The node.
    */
-  draw({ loop, elapsedMs, danceBpm, dancing, breakFrameMs }) {
-    const frameMs = dancing ? 60000 / danceBpm / FRAMES_PER_BEAT : breakFrameMs;
-    // A scene opens on its own first frame. Indexed by the absolute clock, a
-    // four-frame break would open wherever the page happened to be in its
-    // cycle: backstage on lace_boot rather than amp_lean, a dance on its
-    // weakest beat.
-    if (loop !== this.performing) {
-      this.performing = loop;
-      this.openedMs = elapsedMs;
+  nodeOf(run) {
+    if (run.ink === '') {
+      return this.document.createTextNode(run.text);
     }
-    const name = frameAt(loop, elapsedMs - this.openedMs, frameMs);
-    if (name !== this.showing) {
-      this.element.textContent = frameText(name);
-      this.showing = name;
+    const span = this.document.createElement('span');
+    span.className = run.ink;
+    span.textContent = run.text;
+    return span;
+  }
+
+  /**
+   * Draw the sprites of a moment. Only the rows that changed are rebuilt.
+   *
+   * @param {Placement[]} placements The sprites, back to front.
+   * @returns {number} How many rows were rebuilt.
+   */
+  draw(placements) {
+    const { chars, inks } = compose(placements, STAGE.cols, STAGE.rows);
+    let rebuilt = 0;
+    for (const [at, line] of this.lines.entries()) {
+      const runs = runsOf(chars[at], inks[at]);
+      const key = runs.map((run) => `${run.ink}:${run.text}`).join('\n');
+      if (key !== this.showing[at]) {
+        this.showing[at] = key;
+        line.replaceChildren(...runs.map((run) => this.nodeOf(run)));
+        rebuilt += 1;
+      }
     }
-    return name;
+    return rebuilt;
   }
 }
