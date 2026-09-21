@@ -98,9 +98,9 @@ function push(stack, audio) {
 function countTicks(show) {
   const counter = { ticks: 0 };
   const tick = show.tick.bind(show);
-  show.tick = () => {
+  show.tick = (ms) => {
     counter.ticks += 1;
-    tick();
+    tick(ms);
   };
   return counter;
 }
@@ -334,6 +334,36 @@ describe('app', () => {
     assert.equal(Number(tier[1]), director.tier, 'the overlay is reporting a different tier');
     assert.equal(cast[1], show.caption(), 'the overlay is reporting a different cast');
     assert.match(cast[1], /^billy \w+, mo \w+, spike \w+$/);
+  });
+
+  it('C22: the show is told how long a tick lasted, and the URL how long a break may go on', () => {
+    const { window, env } = setup({
+      search: '?breakFrameMs=500&breakRefreshMinMs=2000&breakRefreshMaxMs=2000',
+    });
+    const { show } = boot(env);
+    assert.deepEqual(show.refresh, { min: 2000, max: 2000 });
+    window.runFrame(0);
+    for (const [elapsedMs, breakMs] of [
+      [500, 500],
+      [1000, 1000],
+      [1500, 1500],
+      // Two seconds in, the break is dealt again and its clock starts over.
+      [2000, 0],
+      [2500, 500],
+    ]) {
+      window.runFrame(elapsedMs);
+      assert.equal(show.breakMs, breakMs, `at ${elapsedMs} ms`);
+    }
+  });
+
+  it('C22: left alone, a break is dealt again between one and five minutes in', () => {
+    const { env } = setup();
+    const { show } = boot(env);
+    assert.deepEqual(show.refresh, {
+      min: DEFAULTS.breakRefreshMinMs,
+      max: DEFAULTS.breakRefreshMaxMs,
+    });
+    assert.deepEqual(show.refresh, { min: 60000, max: 300000 });
   });
 
   it('C22: chance reaches the show, so a test can script it', () => {

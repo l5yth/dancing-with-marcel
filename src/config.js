@@ -94,6 +94,10 @@ const PARAMS = {
   driveRangeDb: { default: 18, min: 1, max: 60 },
   /** How long one frame lasts between songs, in milliseconds. */
   breakFrameMs: { default: 900, min: 100, max: 60000 },
+  /** Shortest a break goes on before its scenes are dealt again, in milliseconds. */
+  breakRefreshMinMs: { default: 60000, min: 1000, max: 3600000 },
+  /** Longest a break goes on before its scenes are dealt again, in milliseconds. */
+  breakRefreshMaxMs: { default: 300000, min: 1000, max: 3600000 },
 };
 
 /** Names of all tunables, in table order. */

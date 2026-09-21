@@ -75,7 +75,11 @@ export function boot(env) {
 
   const stage = new Stage({ element: element(document, 'stage'), document });
   const director = new SceneDirector({ config });
-  const show = new Show({ random: env.random });
+  const show = new Show({
+    random: env.random,
+    refreshMinMs: config.breakRefreshMinMs,
+    refreshMaxMs: config.breakRefreshMaxMs,
+  });
   /** @type {Pipeline | null} */
   let pipeline = null;
   /** @type {PipelineEvent | null} */
@@ -105,7 +109,7 @@ export function boot(env) {
       // left in the background, they start again from now and do not race
       // through what was missed.
       dueMs = elapsedMs - dueMs > step ? elapsedMs + step : dueMs + step;
-      show.tick();
+      show.tick(step);
       stage.draw(show.placements());
     }
     window.requestAnimationFrame(paint);

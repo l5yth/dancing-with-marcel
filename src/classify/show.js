@@ -19,12 +19,14 @@
  * way, in which loop and on which frame of it. Three punks walk on from the
  * wings, dance to the energy tier the scene director hears, and between songs
  * are dealt a scene each, so that no two are smoking at once. One may fall
- * asleep, one may wander off, and an animal may cross the floor.
+ * asleep, one may wander off, and an animal may cross the floor. A break that
+ * goes on is dealt again every few minutes, so the stage keeps moving on a
+ * night when no music is heard at all.
  *
- * It advances on a tick and knows nothing of time: the caller decides how long
- * a tick lasts, half a beat while music plays. It knows nothing of the page
- * either. Chance is injected, so every rule here can be tested to the frame.
- * Pure (SPEC invariant 4).
+ * It advances on a tick and has no clock of its own: the caller decides how
+ * long a tick lasts, half a beat while music plays, and says so. It knows
+ * nothing of the page either. Chance is injected, so every rule here can be
+ * tested to the frame. Pure (SPEC invariant 4).
  */
 
 import {
@@ -103,6 +105,12 @@ export const ANIMAL_CHANCE = 0.55;
 export const RABBIT_CHANCE = 0.25;
 
 /**
+ * How long a break goes on before its scenes are dealt again, in milliseconds:
+ * somewhere between the two, drawn afresh every time.
+ */
+export const REFRESH_MS = Object.freeze({ min: 60000, max: 300000 });
+
+/**
  * The between-song scenes a punk may be dealt.
  *
  * @type {LoopList}
@@ -159,14 +167,34 @@ export class Show {
    * Set the stage between songs, with nobody on it: all three are in the wings
    * and walking on.
    *
-   * @param {ShowOptions} [options] Where chance comes from.
+   * @param {ShowOptions} [options] Where chance comes from, and how long a
+   *   break goes on before it is dealt again.
    */
-  constructor({ random = Math.random } = {}) {
+  constructor({
+    random = Math.random,
+    refreshMinMs = REFRESH_MS.min,
+    refreshMaxMs = REFRESH_MS.max,
+  } = {}) {
     /**
      * Where chance comes from.
      * @type {RandomSource}
      */
     this.random = random;
+    /**
+     * Shortest and longest a break goes on before it is dealt again, in milliseconds.
+     * @type {{min: number, max: number}}
+     */
+    this.refresh = { min: refreshMinMs, max: Math.max(refreshMinMs, refreshMaxMs) };
+    /**
+     * How long the break has gone on since it was last dealt, in milliseconds.
+     * @type {number}
+     */
+    this.breakMs = 0;
+    /**
+     * How long this deal lasts, in milliseconds.
+     * @type {number}
+     */
+    this.refreshMs = 0;
     /**
      * Whether music is playing.
      * @type {boolean}
@@ -199,6 +227,17 @@ export class Show {
      */
     this.animal = null;
     this.deal();
+    this.wind();
+  }
+
+  /**
+   * Start the clock of a deal: draw how long it lasts.
+   *
+   * @returns {void}
+   */
+  wind() {
+    this.breakMs = 0;
+    this.refreshMs = this.refresh.min + this.random() * (this.refresh.max - this.refresh.min);
   }
 
   /**
@@ -248,8 +287,11 @@ export class Show {
   }
 
   /**
-   * A break begins: deal the scenes, and let chance send one punk to the
-   * wings, any of the others to sleep, and an animal across the floor.
+   * A break begins, or has gone on long enough to be dealt again: deal the
+   * scenes, and let chance send one punk to the wings, any of the others to
+   * sleep, and an animal across the floor. Whoever wandered off last time
+   * comes back, and whoever slept wakes up, so that a deal always changes
+   * something.
    *
    * @returns {void}
    */
@@ -258,11 +300,16 @@ export class Show {
     const onStage = this.punks.filter((punk) => punk.state === 'stage');
     const outer = onStage.filter((punk) => punk.id !== ANCHOR_PUNK);
     const leaver = outer.length > 0 && this.random() < WANDER_CHANCE ? this.pick(outer) : null;
+    for (const punk of this.punks) {
+      if (punk.state === 'off') {
+        this.enter(punk);
+      }
+    }
     for (const punk of onStage) {
       if (punk === leaver) {
         this.leave(punk);
       } else {
-        if (this.random() < SLEEP_CHANCE) {
+        if (punk.loop !== 'sleep' && this.random() < SLEEP_CHANCE) {
           punk.scene = 'sleep';
         }
         this.settle(punk);
@@ -273,10 +320,12 @@ export class Show {
       const kind = this.random() < RABBIT_CHANCE ? 'rabbit' : 'cat';
       this.animal = { kind, frames: EGGS[kind], index: 0, x: -ANIMAL_WINGS_COLS };
     }
+    this.wind();
   }
 
   /**
-   * Deal the between-song scenes, one a punk and no two alike.
+   * Deal the between-song scenes, one a punk, no two alike, and nobody the
+   * scene it is already in.
    *
    * @returns {void}
    */
@@ -286,9 +335,11 @@ export class Show {
       const other = Math.min(index, Math.floor(this.random() * (index + 1)));
       [deck[index], deck[other]] = [deck[other], deck[index]];
     }
-    this.punks.forEach((punk, index) => {
-      punk.scene = deck[index];
-    });
+    for (const punk of this.punks) {
+      // There are more scenes than punks, so the deck always holds another.
+      const card = deck.findIndex((scene) => scene !== punk.loop);
+      [punk.scene] = deck.splice(card, 1);
+    }
   }
 
   /**
@@ -378,11 +429,14 @@ export class Show {
   }
 
   /**
-   * Advance everyone by one frame.
+   * Advance everyone by one frame. A break that has gone on long enough is
+   * dealt again, which leaves whoever it moved on a first frame.
    *
+   * @param {number} [ms] How long the tick lasted, in milliseconds. Left out,
+   *   the break never grows older.
    * @returns {void}
    */
-  tick() {
+  tick(ms = 0) {
     for (const punk of this.punks) {
       if (punk.state !== 'off') {
         this.step(punk);
@@ -394,6 +448,12 @@ export class Show {
       animal.x += this.pace(animal);
       if (animal.x > STAGE.cols + ANIMAL_WINGS_COLS) {
         this.animal = null;
+      }
+    }
+    if (!this.dancing) {
+      this.breakMs += ms;
+      if (this.breakMs >= this.refreshMs) {
+        this.intermission();
       }
     }
   }

@@ -30,6 +30,7 @@ import {
   DAZED_FRAMES,
   DRIFT_COLS,
   dancesOf,
+  REFRESH_MS,
   Show,
   STAGE,
   WINGS,
@@ -555,6 +556,116 @@ describe('the show', () => {
         assert.equal(show.place(frames, id, frame, -1, 40).sprite, left.sprite, 'mirrored twice');
       }
     }
+  });
+
+  it('C22: a break that goes on is dealt again, between one and five minutes in', () => {
+    assert.deepEqual(REFRESH_MS, { min: 60000, max: 300000 });
+    const source = chance();
+    const show = new Show({ random: source.next });
+    assert.equal(
+      show.refreshMs,
+      60000 + 0.99 * 240000,
+      'chance decides how long, inside the range',
+    );
+    // Ticks that say nothing of their length leave the break no older.
+    arrive(show);
+    assert.equal(show.breakMs, 0);
+
+    // The next deal is drawn at the shortest: sixty seconds of 900 ms ticks.
+    // Six draws deal the scenes, one keeps everybody here, four keep them awake
+    // and turn Mo, one keeps the animals away, and the last winds the clock.
+    show.hear(true, 1);
+    source.queue.push(0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0);
+    show.hear(false, 0);
+    assert.equal(source.queue.length, 0, 'the draws are not the ones this test scripts');
+    assert.equal(show.refreshMs, 60000);
+    const before = show.punks.map((punk) => punk.loop);
+    for (let tick = 1; tick < 67; tick += 1) {
+      show.tick(900);
+      assert.deepEqual(
+        show.punks.map((punk) => punk.loop),
+        before,
+        `dealt again after ${tick * 0.9} s`,
+      );
+    }
+    show.tick(900);
+    const after = show.punks.map((punk) => punk.loop);
+    for (const [at, loop] of after.entries()) {
+      assert.notEqual(loop, before[at], `${show.punks[at].id} was dealt the scene it was in`);
+      assert.equal(LOOP_ENERGY[loop], 0, loop);
+    }
+    assert.equal(new Set(after).size, 3, `two share a scene: ${after}`);
+    for (const punk of show.punks) {
+      assert.deepEqual([punk.index, punk.held], [0, 0], `${punk.id} opens on its first frame`);
+    }
+    // And the clock starts again, with a length of its own.
+    assert.equal(show.breakMs, 0);
+    assert.equal(show.refreshMs, 60000 + 0.99 * 240000);
+  });
+
+  it('C22: a deal always changes something: no scene twice running, sleepers wake, wanderers return', () => {
+    const show = new Show({ random: mulberry32(11), refreshMinMs: 1000, refreshMaxMs: 3000 });
+    arrive(show);
+    let returned = 0;
+    let woke = 0;
+    for (let deal = 0; deal < 500; deal += 1) {
+      const before = show.punks.map((punk) => ({ ...punk }));
+      let ticks = 0;
+      while (show.breakMs + 900 < show.refreshMs) {
+        show.tick(900);
+        ticks += 1;
+      }
+      const settled = show.punks.map((punk) => ({ ...punk }));
+      show.tick(900);
+      assert.ok(ticks <= 3, `a deal of at most 3 s took ${ticks + 1} ticks`);
+      assert.equal(show.breakMs, 0, 'the clock was not started again');
+      for (const [at, punk] of show.punks.entries()) {
+        const was = settled[at];
+        if (was.state === 'off') {
+          assert.equal(punk.state, 'enter', `${punk.id} stayed in the wings`);
+          returned += 1;
+        } else if (was.state === 'stage' && punk.state === 'stage') {
+          assert.notEqual(punk.loop, was.loop, `deal ${deal}: ${punk.id} is still in ${was.loop}`);
+          woke += was.loop === 'sleep' ? 1 : 0;
+        }
+      }
+      const awake = show.punks
+        .filter((punk) => punk.state === 'stage' && punk.loop !== 'sleep')
+        .map((punk) => punk.loop);
+      assert.equal(new Set(awake).size, awake.length, `deal ${deal}: ${awake}`);
+      assert.equal(punkOf(show, 'mo').state, 'stage');
+      assert.ok(before.length === 3);
+    }
+    assert.ok(returned > 20, `only ${returned} returns in 500 deals`);
+    assert.ok(woke > 20, `only ${woke} sleepers woke in 500 deals`);
+  });
+
+  it('C22: music stops the clock of a break, and the next break starts it from nothing', () => {
+    const source = chance();
+    const show = new Show({ random: source.next, refreshMinMs: 5000, refreshMaxMs: 5000 });
+    arrive(show);
+    show.tick(900);
+    show.tick(900);
+    assert.equal(show.breakMs, 1800);
+    show.hear(true, 2);
+    const dancing = show.punks.map((punk) => punk.loop);
+    for (let tick = 0; tick < 12; tick += 1) {
+      show.tick(900);
+    }
+    assert.equal(show.breakMs, 1800, 'the break grew older while they danced');
+    assert.deepEqual(
+      show.punks.map((punk) => punk.loop),
+      dancing,
+      'a deal in the middle of a song',
+    );
+    show.hear(false, 0);
+    assert.equal(show.breakMs, 0);
+  });
+
+  it('C22: a longest that is under the shortest is the shortest', () => {
+    const show = new Show({ random: () => 0.5, refreshMinMs: 5000, refreshMaxMs: 1000 });
+    assert.deepEqual(show.refresh, { min: 5000, max: 5000 });
+    assert.equal(show.refreshMs, 5000);
   });
 
   it('C22: a choice at the very top of the range is the last one, not one past it', () => {

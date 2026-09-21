@@ -38,10 +38,11 @@ import {
 
 /**
  * Digest of everything the module exports, taken from the design project's
- * own file on 2026-09-21. The repository copy adds a licence header and JSDoc
- * and must draw exactly what that file draws.
+ * own file on 2026-09-21, the handoff in which Spike's tips are dyed red. The
+ * repository copy adds a licence header and JSDoc and must draw exactly what
+ * that file draws.
  */
-const APPROVED = '71d07193e2c07cc328414412a7acfd6d085865db32d539295bea89c8d5622057';
+const APPROVED = 'aab750cd8257f84f2361c36c8b4ae3f9b002b1d147e5327d4370846fd37c1d74';
 
 /** Every frame name a punk has. */
 const FRAMES = Object.keys(SPRITES.billy);
@@ -114,12 +115,42 @@ describe('the sheet', () => {
     assert.deepEqual([...seen].sort(), Object.keys(PALETTE).sort(), 'an accent nobody wears');
   });
 
-  it('C22: only the hair of one and the lips of another tell the punks apart in colour', () => {
+  it('C22: bleached hair, lipstick and dyed tips tell the punks apart in colour', () => {
     const colours = (/** @type {string} */ punk) =>
       new Set(SPRITES[punk].idle_a.mask.join('').replaceAll(' ', ''));
     assert.deepEqual([...colours('billy')], ['y']);
     assert.deepEqual([...colours('mo')], ['p']);
-    assert.deepEqual([...colours('spike')], []);
+    assert.deepEqual([...colours('spike')], ['r']);
+    assert.deepEqual(
+      Object.entries(PUNKS).map(([id, punk]) => [
+        id,
+        punk.bleached,
+        punk.lipstick,
+        punk.tips ?? false,
+      ]),
+      [
+        ['billy', true, false, false],
+        ['mo', false, true, false],
+        ['spike', false, false, true],
+      ],
+    );
+  });
+
+  it('C22: the tips are the top row of the spikes, cell for cell, and nothing under it', () => {
+    const head = FRAME_META.idle_a.head;
+    assert.ok(head);
+    const { rows, mask } = SPRITES.spike.idle_a;
+    const top = head.row - 3;
+    assert.equal(mask[top], rows[top].replaceAll(/\S/g, 'r'), 'a tip is not dyed, or air is');
+    for (const [at, line] of mask.entries()) {
+      assert.equal(line.includes('r'), at === top, `row ${at}`);
+    }
+    // Thrown back, thrown forward or facing the crowd, the tips stay dyed.
+    // Wilted hair has no top row to dye: it is the one frame without them.
+    const undyed = Object.entries(SPRITES.spike)
+      .filter(([, sprite]) => !sprite.mask.join('').includes('r'))
+      .map(([name]) => name);
+    assert.deepEqual(undyed, ['wilt']);
   });
 
   it('C22: every frame a loop or an egg names exists, for every punk or as an animal', () => {

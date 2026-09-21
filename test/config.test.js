@@ -42,6 +42,8 @@ describe('config', () => {
       bpmSettleMs: 3000,
       driveRangeDb: 18,
       breakFrameMs: 900,
+      breakRefreshMinMs: 60000,
+      breakRefreshMaxMs: 300000,
     });
   });
 

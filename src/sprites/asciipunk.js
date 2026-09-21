@@ -52,7 +52,7 @@ export const ROWS = 16;
  */
 export const PALETTE = Object.freeze({
   y: '#ffd21e', // bleached hair
-  r: '#ff3b1f', // cigarette ember, amp LED, blood
+  r: '#ff3b1f', // cigarette ember, amp LED, blood, Spike's dyed tips
   a: '#f7a325', // beer
   g: '#5cff6a', // TV / N64 screen glow
   p: '#ff2e88', // lipstick
@@ -66,7 +66,7 @@ export const PALETTE = Object.freeze({
 export const PUNKS = Object.freeze({
   billy: { name: 'Billy', hair: 'bleached brush spikes', bleached: true, lipstick: false },
   mo: { name: 'Mo', hair: 'mohawk', bleached: false, lipstick: true },
-  spike: { name: 'Spike', hair: 'liberty spikes', bleached: false, lipstick: false },
+  spike: { name: 'Spike', hair: 'liberty spikes', bleached: false, lipstick: false, tips: true },
 });
 
 /**
@@ -957,6 +957,8 @@ function compose(punkId, name) {
         if (existing && existing !== ' ') return; // body occludes hair
         put(art, row, col, ch);
         if (punk.bleached) put(mask, row, col, 'y');
+        // Spike: red-dyed tips, the top row of every spike
+        if (punk.tips && i === 0) put(mask, row, col, 'r');
       });
     });
     if (punk.lipstick) {

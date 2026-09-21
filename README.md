@@ -70,6 +70,7 @@ Add parameters to the URL:
   detected, and how long a new one must hold
 - `?driveRangeDb=18` sets how loud counts as full energy
 - `?breakFrameMs=900` sets how long one frame lasts between songs
+- `?breakRefreshMinMs=60000&breakRefreshMaxMs=300000` set how long a break goes on before the scenes change
 
 With `?debug=1` each value is shown next to the threshold it must clear.
 

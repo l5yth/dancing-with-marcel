@@ -74,6 +74,10 @@ interface Config {
   driveRangeDb: number;
   /** How long one frame of a between-song scene lasts, in milliseconds. */
   breakFrameMs: number;
+  /** Shortest a break goes on before its scenes are dealt again, in milliseconds. */
+  breakRefreshMinMs: number;
+  /** Longest a break goes on before its scenes are dealt again, in milliseconds. */
+  breakRefreshMaxMs: number;
 }
 
 /** Name of one tunable. */
@@ -280,6 +284,8 @@ interface Punk {
   bleached: boolean;
   /** Whether the lips are coloured by the mask. */
   lipstick: boolean;
+  /** Whether the top row of the hair is dyed, and so coloured by the mask. */
+  tips?: boolean;
 }
 
 /** A drawn sprite: rows of art and a parallel grid of mask letters. */
@@ -426,6 +432,10 @@ interface Placement {
 interface ShowOptions {
   /** Where chance comes from; the default is `Math.random`. */
   random?: RandomSource;
+  /** Shortest a break goes on before its scenes are dealt again, in milliseconds. */
+  refreshMinMs?: number;
+  /** Longest a break goes on before its scenes are dealt again, in milliseconds. */
+  refreshMaxMs?: number;
 }
 
 /** The picture of a moment: a grid of characters, and the mask letter of each. */

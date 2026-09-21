@@ -68,9 +68,9 @@ body {
 
 /*
   The five accents of the sprite sheet's PALETTE, one class per mask letter:
-  bleached hair, ember and LED and blood, beer, screen glow, lipstick. They
-  reach the page only through a sprite's mask (SPEC invariant 5, F2), and a
-  test holds these values to the sheet's.
+  bleached hair, ember and LED and blood and dyed tips, beer, screen glow,
+  lipstick. They reach the page only through a sprite's mask (SPEC invariant
+  5, F2), and a test holds these values to the sheet's.
 */
 .sheet .y {
   color: #ffd21e;
