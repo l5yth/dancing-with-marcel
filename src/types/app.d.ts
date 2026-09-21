@@ -72,6 +72,8 @@ interface Config {
   bpmSettleMs: number;
   /** How far over the music threshold counts as full energy, in dB. */
   driveRangeDb: number;
+  /** How long the room must ask for another energy tier before the punks follow it, in milliseconds. */
+  tierSettleMs: number;
   /** How long one frame of a between-song scene lasts, in milliseconds. */
   breakFrameMs: number;
   /** Shortest a break goes on before its scenes are dealt again, in milliseconds. */
@@ -245,10 +247,24 @@ interface StageWindow {
   innerWidth: number;
   /** Height of the viewport, in pixels. */
   innerHeight: number;
-  /** Subscribe to a window event, used for `resize`. */
-  addEventListener: (type: string, listener: () => void) => void;
+  /** Subscribe to a window event, used for `resize` and `keydown`. */
+  addEventListener: (type: string, listener: (event: KeyPress) => void) => void;
   /** Ask to be called before the next repaint, with a millisecond timestamp. */
   requestAnimationFrame: (callback: (elapsedMs: number) => void) => number;
+}
+
+/** What the app reads of a key being pressed. */
+interface KeyPress {
+  /** The key, as the keyboard layout names it. */
+  key: string;
+  /** Whether the key is being held down and this is a repeat. */
+  repeat: boolean;
+  /** Whether Control is held. */
+  ctrlKey: boolean;
+  /** Whether Meta, the command or Windows key, is held. */
+  metaKey: boolean;
+  /** Whether Alt is held. */
+  altKey: boolean;
 }
 
 /** Browser globals the app needs, injected so the wiring runs in unit tests. */

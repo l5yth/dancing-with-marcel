@@ -52,7 +52,11 @@ describe('monochrome', () => {
     // value: a stylesheet that drifts from PALETTE, or spends an accent on
     // anything that is not a sprite's mask, fails here.
     const css = stripComments(read('src/style.css'));
-    const rules = [...css.matchAll(/\.sheet \.([a-z])\s*\{\s*color:\s*(#[0-9a-f]{6});\s*\}/g)];
+    // Anchored to the start of a rule: `a:hover, .sheet .p { … }` would spend
+    // the lipstick on a link and still hold the right value.
+    const rules = [
+      ...css.matchAll(/(?<=^|\})\s*\.sheet \.([a-z])\s*\{\s*color:\s*(#[0-9a-f]{6});\s*\}/g),
+    ];
     assert.deepEqual(Object.fromEntries(rules.map((rule) => [rule[1], rule[2]])), { ...PALETTE });
     const accents = Object.values(PALETTE);
     const spent = declarations(css).filter(({ value }) =>

@@ -18,16 +18,15 @@ One of them may walk off or fall asleep, and a cat may cross the floor.
 2. Open `http://localhost:8080/`
 3. Click start, allow the microphone
 
-The stage fills the width of the window at any size. White on black, plus five
-accent colours.
+The stage fits the window at any size. White on black, plus five accent
+colours.
 
 They start dancing 12 to 18 seconds into a song and stop 2 seconds after it
 ends, or about 25 seconds after if talking follows with no silence.
 
 ## Set the microphone level
 
-Do this once on the machine that listens. Too much gain clips the music and
-nobody dances.
+Do this once on the machine that listens. With the gain too high nobody dances.
 
 1. Record the quiet room: `pw-record --channels 1 --rate 44100 room.wav`, stop with Ctrl+C
 2. Record a song at party volume the same way into `song.wav`
@@ -68,11 +67,12 @@ Add parameters to the URL:
 - `?tempoMinConfidence=0.15` sets how sure a tempo must be to be shown
 - `?defaultBpm=140&bpmSettleMs=3000` set the dance tempo before one is
   detected, and how long a new one must hold
-- `?driveRangeDb=18` sets how loud counts as full energy
+- `?driveRangeDb=18&tierSettleMs=2000` set how loud counts as full energy, and how long a change of energy must hold
 - `?breakFrameMs=900` sets how long one frame lasts between songs
 - `?breakRefreshMinMs=60000&breakRefreshMaxMs=300000` set how long a break goes on before the scenes change
 
 With `?debug=1` each value is shown next to the threshold it must clear.
+Press `d` to show or hide it at any time.
 
 ## Check audio files
 

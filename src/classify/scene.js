@@ -19,7 +19,14 @@
  * music; this turns the music into an energy tier, 1 to 3, and the show picks
  * what each punk does with it. Between songs the tier is 0.
  *
- * Pure: no browser API, no wall clock (SPEC invariant 4).
+ * The start and the end of a song are taken at once. Inside a song the tier
+ * follows the room only once the room has asked for the same new tier for
+ * `tierSettleMs` without a break: a song that sits on the line between two
+ * tiers crosses it again and again, and every crossing would start all three
+ * punks on a new dance.
+ *
+ * Pure: no browser API, no wall clock (SPEC invariant 4). Time is the event's
+ * own, counted in samples.
  */
 
 /**
@@ -55,6 +62,16 @@ export class SceneDirector {
      * @type {number}
      */
     this.tier = 0;
+    /**
+     * Tier the room is asking for, which the punks may not have followed yet.
+     * @type {number}
+     */
+    this.asked = 0;
+    /**
+     * When the room began asking for it, in seconds of audio.
+     * @type {number}
+     */
+    this.askedAt = 0;
   }
 
   /**
@@ -81,7 +98,16 @@ export class SceneDirector {
   update(event) {
     const dancing = event.state === 'music';
     this.drive = dancing ? this.driveOf(event) : 0;
-    this.tier = dancing ? 1 + Math.min(2, Math.floor(this.drive * 3)) : 0;
+    const asked = dancing ? 1 + Math.min(2, Math.floor(this.drive * 3)) : 0;
+    if (asked !== this.asked) {
+      this.asked = asked;
+      this.askedAt = event.time;
+    }
+    // A song begins and ends at once; inside it, a new tier has to last.
+    const settled = (event.time - this.askedAt) * 1000 >= this.config.tierSettleMs;
+    if (asked === 0 || this.tier === 0 || settled) {
+      this.tier = asked;
+    }
     return this.tier;
   }
 }

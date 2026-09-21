@@ -239,11 +239,13 @@ describe('app', () => {
     const counter = countTicks(show);
     window.runFrame(0);
     assert.equal(counter.ticks, 0, 'the music has just begun: drawn, not moved on');
-    for (let elapsedMs = 5; elapsedMs <= 2000; elapsedMs += 5) {
+    for (let elapsedMs = 5; elapsedMs <= 6000; elapsedMs += 5) {
       window.runFrame(elapsedMs);
     }
-    // Four eighth notes a second at 120, however the animation frames fall.
-    assert.ok(Math.abs(counter.ticks - (2000 / 60000) * danceBpm * 2) <= 1, `${counter.ticks}`);
+    // Four eighth notes a second at 120, however the animation frames fall:
+    // 24 in six seconds, where the default 140 would make it 28.
+    assert.ok(Math.abs(counter.ticks - 24) <= 1, `${counter.ticks} ticks in 6 s`);
+    assert.ok(Math.abs(counter.ticks - (6000 / 60000) * DEFAULTS.defaultBpm * 2) > 2);
   });
 
   it('C22: between songs nobody is hurried along by the beat', async () => {
@@ -326,11 +328,13 @@ describe('app', () => {
     const { stack, document, env } = setup({ search: '?debug=1' });
     const { director, show } = boot(env);
     await click(document);
-    push(stack, drums(120, 3, RATE));
+    // Into the music: between songs the tier is 0 whatever the overlay is fed.
+    push(stack, drums(120, WARM_S, RATE));
     const text = document.elements.overlay.textContent;
-    const tier = /^state\s+\w+\s+tier (\d)$/m.exec(text);
+    const tier = /^state\s+music\s+tier (\d)$/m.exec(text);
     const cast = /^punks\s+(.+)$/m.exec(text);
     assert.ok(tier !== null && cast !== null, text);
+    assert.ok(director.tier >= 1, 'the drums were not heard as music');
     assert.equal(Number(tier[1]), director.tier, 'the overlay is reporting a different tier');
     assert.equal(cast[1], show.caption(), 'the overlay is reporting a different cast');
     assert.match(cast[1], /^billy \w+, mo \w+, spike \w+$/);
@@ -377,6 +381,74 @@ describe('app', () => {
     const { show } = boot(env);
     assert.ok(draws > 0, 'the show was dealt its scenes by some other chance');
     assert.equal(show.random, env.random);
+  });
+
+  it('C16: d shows and hides the debug text, wherever the page started', async () => {
+    /**
+     * A key going down, as the app reads one.
+     *
+     * @param {Partial<KeyPress>} fields What to override.
+     * @returns {KeyPress} The key press.
+     */
+    const press = (fields) => ({
+      key: 'd',
+      repeat: false,
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      ...fields,
+    });
+    for (const [search, opensShown] of /** @type {[string, boolean][]} */ ([
+      ['', false],
+      ['?debug=1', true],
+    ])) {
+      const { stack, document, window, env } = setup({ search });
+      const { director, show } = boot(env);
+      const { overlay, repo } = document.elements;
+      const shown = () => [!overlay.hidden, !repo.hidden];
+      assert.deepEqual(shown(), [opensShown, opensShown], `opened with "${search}"`);
+      window.listeners.keydown(press({}));
+      assert.deepEqual(shown(), [!opensShown, !opensShown], 'd did not toggle it');
+      window.listeners.keydown(press({ key: 'D' }));
+      assert.deepEqual(shown(), [opensShown, opensShown], 'a capital D did not toggle it back');
+
+      // Keys that are not this one: the browser's own shortcuts, a key held
+      // down, and every other letter.
+      for (const other of [
+        press({ ctrlKey: true }),
+        press({ metaKey: true }),
+        press({ altKey: true }),
+        press({ repeat: true }),
+        press({ key: 'f' }),
+        press({ key: 'Dead' }),
+      ]) {
+        window.listeners.keydown(other);
+        assert.deepEqual(shown(), [opensShown, opensShown], JSON.stringify(other));
+      }
+
+      // Shown in the middle of a song, it says what was last heard at once,
+      // not at the next refresh: the tier the director names and the cast the
+      // show has, which between songs would be 0 and prove little.
+      await click(document);
+      push(stack, drums(120, WARM_S, RATE));
+      if (opensShown) {
+        window.listeners.keydown(press({}));
+      }
+      overlay.textContent = '';
+      window.listeners.keydown(press({}));
+      assert.equal(overlay.hidden, false);
+      const tier = /^state\s+music\s+tier (\d)$/m.exec(overlay.textContent);
+      const cast = /^punks\s+(.+)$/m.exec(overlay.textContent);
+      assert.ok(tier !== null && cast !== null, overlay.textContent);
+      assert.ok(director.tier >= 1, 'the drums were not heard as music');
+      assert.equal(Number(tier[1]), director.tier, 'd showed another tier');
+      assert.equal(cast[1], show.caption(), 'd showed another cast');
+      // Hidden, it is left alone: nothing is written that nobody reads.
+      window.listeners.keydown(press({}));
+      overlay.textContent = 'stale';
+      push(stack, drums(120, 1, RATE));
+      assert.equal(overlay.textContent, 'stale');
+    }
   });
 
   it('unit: ?debug=1 also shows the repository link', () => {

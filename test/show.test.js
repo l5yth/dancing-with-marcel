@@ -23,16 +23,24 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  ANCHOR_PUNK,
+  ANIMAL_CHANCE,
   ANIMAL_WINGS_COLS,
   BREAK_LOOPS,
   CAT_COLS,
+  CENTRE_COLS,
   DANCE_HOLD_FRAMES,
+  DAZED_CHANCE,
   DAZED_FRAMES,
   DRIFT_COLS,
   dancesOf,
+  RABBIT_CHANCE,
   REFRESH_MS,
   Show,
+  SLEEP_CHANCE,
   STAGE,
+  SWAP_CHANCE,
+  WANDER_CHANCE,
   WINGS,
   WINGS_COLS,
 } from '../src/classify/show.js';
@@ -45,60 +53,53 @@ import {
   mirror,
   SPRITES,
 } from '../src/sprites/asciipunk.js';
+import { arrive, chance, DEAL, punkOf, tickUntil } from './helpers/show.js';
 import { mulberry32 } from './helpers/synth.js';
 
-/**
- * Chance that answers from a queue, and with a fallback once it is empty.
- * 0.99 says no to every roll and 0 says yes to every one.
- *
- * @param {number} [fallback] What to answer when nothing is queued.
- * @returns {{queue: number[], fallback: number, calls: number, next: () => number}} The source.
- */
-function chance(fallback = 0.99) {
-  const source = {
-    /** @type {number[]} */
-    queue: [],
-    fallback,
-    calls: 0,
-    next: () => {
-      source.calls += 1;
-      const queued = source.queue.shift();
-      return queued === undefined ? source.fallback : queued;
-    },
-  };
-  return source;
-}
-
-/**
- * Tick until everybody who is walking on has arrived.
- *
- * @param {Show} show The show.
- * @returns {number} Ticks it took.
- */
-function arrive(show) {
-  let ticks = 0;
-  while (show.punks.some((punk) => punk.state === 'enter')) {
-    show.tick();
-    ticks += 1;
-    assert.ok(ticks < 200, 'somebody never came home');
-  }
-  return ticks;
-}
-
-/**
- * One punk of a show.
- *
- * @param {Show} show The show.
- * @param {string} id Which.
- * @returns {PunkState} The punk.
- */
-function punkOf(show, id) {
-  const found = show.punks.find((punk) => punk.id === id);
-  assert.ok(found, id);
-  return found;
-}
-
 describe('the show', () => {
+  it('C22: every number of the show is the one SPEC F3 to F8 gives', () => {
+    // The tests below are written with these names, so a changed number would
+    // change the tests with it. Here they are held to what was decided.
+    assert.deepEqual(
+      {
+        ANCHOR_PUNK,
+        CENTRE_COLS,
+        DANCE_HOLD_FRAMES,
+        SWAP_CHANCE,
+        DRIFT_COLS,
+        WINGS_COLS,
+        ANIMAL_WINGS_COLS,
+        CAT_COLS: { ...CAT_COLS },
+        DAZED_FRAMES,
+        DAZED_CHANCE,
+        SLEEP_CHANCE,
+        WANDER_CHANCE,
+        ANIMAL_CHANCE,
+        RABBIT_CHANCE,
+        REFRESH_MS: { ...REFRESH_MS },
+        WINGS: { ...WINGS },
+      },
+      {
+        ANCHOR_PUNK: 'mo',
+        CENTRE_COLS: 6,
+        DANCE_HOLD_FRAMES: 16,
+        SWAP_CHANCE: 0.5,
+        DRIFT_COLS: 14,
+        WINGS_COLS: 20,
+        ANIMAL_WINGS_COLS: 14,
+        CAT_COLS: { break: 5, music: 1 },
+        DAZED_FRAMES: 8,
+        DAZED_CHANCE: 0.35,
+        SLEEP_CHANCE: 0.15,
+        WANDER_CHANCE: 0.45,
+        ANIMAL_CHANCE: 0.55,
+        RABBIT_CHANCE: 0.25,
+        REFRESH_MS: { min: 60000, max: 300000 },
+        WINGS: { billy: -28, mo: -10, spike: 130 },
+      },
+    );
+  });
+
   it('C22: the stage is 120 by 21 with the floor at 18 and three homes', () => {
     assert.deepEqual(STAGE, {
       cols: 120,
@@ -133,11 +134,14 @@ describe('the show', () => {
       [WINGS.billy + 2, WINGS.mo + 2, WINGS.spike - 2],
     );
     // Nobody walks through anybody: the one with furthest to go is in front.
-    while (show.punks.some((punk) => punk.state === 'enter')) {
-      show.tick();
-      const [billy, mo] = show.punks;
-      assert.ok(billy.x < mo.x, `billy at ${billy.x} has caught mo at ${mo.x}`);
-    }
+    tickUntil(
+      show,
+      () => show.punks.every((punk) => punk.state !== 'enter'),
+      () => {
+        const [billy, mo] = show.punks;
+        assert.ok(billy.x < mo.x, `billy at ${billy.x} has caught mo at ${mo.x}`);
+      },
+    );
     for (const punk of show.punks) {
       assert.equal(punk.state, 'stage');
       assert.equal(punk.x, punk.home, punk.id);
@@ -148,16 +152,19 @@ describe('the show', () => {
     const show = new Show({ random: chance().next });
     const dealt = show.punks.map((punk) => punk.scene);
     const walking = new Set(show.punks);
-    while (walking.size > 0) {
-      show.tick();
-      for (const punk of walking) {
-        if (punk.state === 'stage') {
-          // It opens on the scene's first frame, the tick it arrives.
-          assert.deepEqual([punk.loop, punk.index, punk.held], [punk.scene, 0, 0], punk.id);
-          walking.delete(punk);
+    tickUntil(
+      show,
+      () => walking.size === 0,
+      () => {
+        for (const punk of walking) {
+          if (punk.state === 'stage') {
+            // It opens on the scene's first frame, the tick it arrives.
+            assert.deepEqual([punk.loop, punk.index, punk.held], [punk.scene, 0, 0], punk.id);
+            walking.delete(punk);
+          }
         }
-      }
-    }
+      },
+    );
     assert.deepEqual(
       show.punks.map((punk) => punk.loop),
       dealt,
@@ -246,6 +253,87 @@ describe('the show', () => {
     }
   });
 
+  it('C22: a new dance is never the one it had, wherever chance points', () => {
+    for (const tier of [1, 2, 3]) {
+      for (const had of dancesOf(tier)) {
+        for (const draw of [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 0.99]) {
+          const source = chance();
+          const show = new Show({ random: source.next });
+          arrive(show);
+          show.hear(true, tier);
+          const billy = punkOf(show, 'billy');
+          show.perform(billy, had, LOOPS[had]);
+          source.queue.push(draw);
+          show.dance(billy);
+          assert.notEqual(billy.loop, had, `tier ${tier}, draw ${draw}: handed ${had} again`);
+          assert.ok(dancesOf(tier).includes(billy.loop), billy.loop);
+        }
+      }
+    }
+  });
+
+  it('C22: a draw equal to the chance says no, and one just under it says yes', () => {
+    // The swap: held long enough, and chance at one half exactly.
+    const source = chance();
+    const show = new Show({ random: source.next });
+    arrive(show);
+    show.hear(true, 1);
+    const had = show.punks.map((punk) => punk.loop);
+    source.fallback = SWAP_CHANCE;
+    for (let tick = 0; tick < 2 * DANCE_HOLD_FRAMES; tick += 1) {
+      show.tick();
+    }
+    assert.deepEqual(
+      show.punks.map((punk) => punk.loop),
+      had,
+    );
+
+    // Walking off, sleeping, and the animal, each on its own line of the deal.
+    const breakWith = (/** @type {number[]} */ draws) => {
+      const fresh = chance();
+      const made = new Show({ random: fresh.next });
+      arrive(made);
+      made.hear(true, 1);
+      fresh.queue.push(...DEAL, ...draws);
+      made.hear(false, 0);
+      return made;
+    };
+    const stayed = breakWith([WANDER_CHANCE]);
+    assert.ok(stayed.punks.every((punk) => punk.state === 'stage'));
+    const left = breakWith([WANDER_CHANCE - 0.01, 0.99]);
+    assert.deepEqual(
+      left.punks.map((punk) => punk.state),
+      ['stage', 'stage', 'exit'],
+    );
+    const awake = breakWith([0.99, SLEEP_CHANCE]);
+    assert.notEqual(punkOf(awake, 'billy').loop, 'sleep');
+    const asleep = breakWith([0.99, SLEEP_CHANCE - 0.01]);
+    assert.equal(punkOf(asleep, 'billy').loop, 'sleep');
+    // Nobody leaves, nobody sleeps, Mo picks a side: five draws, then the animal.
+    const quiet = [0.99, 0.99, 0.99, 0.99, 0.99];
+    assert.equal(breakWith([...quiet, ANIMAL_CHANCE]).animal, null);
+    assert.equal(breakWith([...quiet, ANIMAL_CHANCE - 0.01, RABBIT_CHANCE]).animal?.kind, 'cat');
+    assert.equal(
+      breakWith([...quiet, ANIMAL_CHANCE - 0.01, RABBIT_CHANCE - 0.01]).animal?.kind,
+      'rabbit',
+    );
+    // Dazed: the same line, from both sides.
+    for (const [draw, loop] of /** @type {[number, boolean][]} */ ([
+      [DAZED_CHANCE, false],
+      [DAZED_CHANCE - 0.01, true],
+    ])) {
+      const fresh = chance();
+      const made = new Show({ random: fresh.next });
+      arrive(made);
+      made.hear(true, 3);
+      const billy = punkOf(made, 'billy');
+      made.perform(billy, 'pogo', LOOPS.pogo);
+      fresh.queue.push(draw);
+      made.hear(true, 2);
+      assert.equal(billy.loop === 'dazed', loop, `a draw of ${draw}`);
+    }
+  });
+
   it('C22: a new tier re-picks for everyone on stage, and the same tier for nobody', () => {
     const source = chance();
     const show = new Show({ random: source.next });
@@ -290,6 +378,166 @@ describe('the show', () => {
     );
   });
 
+  it('C22: only a punk within 6 columns of the centre has to pick a side', () => {
+    const source = chance();
+    const show = new Show({ random: source.next });
+    const mo = punkOf(show, 'mo');
+    const centre = STAGE.cols / 2;
+    for (const [x, draw, facing] of [
+      [centre + 6, 0.49, 1],
+      [centre + 6, 0.5, -1],
+      [centre - 6, 0.5, -1],
+      [centre, 0.49, 1],
+    ]) {
+      mo.x = x;
+      source.queue.push(draw);
+      show.faceCentre(mo);
+      assert.equal(mo.facing, facing, `at ${x} with a draw of ${draw}`);
+      assert.equal(source.queue.length, 0, `at ${x} no side was picked`);
+    }
+    // One column further out there is a centre to face, and chance is not asked.
+    for (const [x, facing] of [
+      [centre + 7, -1],
+      [centre - 7, 1],
+    ]) {
+      const calls = source.calls;
+      mo.x = x;
+      show.faceCentre(mo);
+      assert.equal(mo.facing, facing, `at ${x}`);
+      assert.equal(source.calls, calls, `at ${x} chance was asked`);
+    }
+  });
+
+  it('C22: strut picks its facing at random, either way', () => {
+    for (const [draw, facing] of [
+      [0.49, 1],
+      [0.5, -1],
+    ]) {
+      const source = chance();
+      const show = new Show({ random: source.next });
+      arrive(show);
+      // Billy's draws come first: 0 is strut, and the next is the way it goes.
+      source.queue.push(0, draw);
+      show.hear(true, 2);
+      const billy = punkOf(show, 'billy');
+      assert.deepEqual([billy.loop, billy.facing], ['strut', facing], `a draw of ${draw}`);
+      show.tick();
+      assert.equal(billy.x, billy.home + 2 * facing);
+    }
+  });
+
+  it('C22: a punk who has strutted walks home before it does anything else', () => {
+    const source = chance();
+    const show = new Show({ random: source.next });
+    arrive(show);
+    const billy = punkOf(show, 'billy');
+    source.queue.push(0, 0);
+    show.hear(true, 2);
+    for (let tick = 0; tick < 5; tick += 1) {
+      show.tick();
+    }
+    assert.deepEqual([billy.loop, billy.x], ['strut', billy.home + 10]);
+
+    // A new tier: the dance waits until he is back where he stands.
+    show.hear(true, 3);
+    assert.deepEqual([billy.state, billy.loop, billy.facing], ['enter', 'walk', -1]);
+    for (let tick = 1; tick <= 5; tick += 1) {
+      show.tick();
+      assert.equal(billy.x, billy.home + 10 - 2 * tick);
+    }
+    assert.equal(billy.state, 'stage');
+    assert.ok(dancesOf(3).includes(billy.loop), billy.loop);
+
+    // The same before a scene: nobody sits down in a neighbour's lap.
+    show.hear(true, 2);
+    show.perform(billy, 'strut', LOOPS.strut);
+    billy.facing = 1;
+    for (let tick = 0; tick < 4; tick += 1) {
+      show.tick();
+    }
+    show.hear(false, 0);
+    assert.deepEqual([billy.state, billy.loop, billy.x], ['enter', 'walk', billy.home + 8]);
+    arrive(show);
+    assert.deepEqual([billy.x, billy.loop], [billy.home, billy.scene]);
+  });
+
+  it('C22: whoever is not drifting or walking stands on its home, all night', () => {
+    const show = new Show({ random: mulberry32(42) });
+    arrive(show);
+    for (let song = 0; song < 200; song += 1) {
+      show.hear(true, 2);
+      for (let tick = 0; tick < 60; tick += 1) {
+        show.tick(214);
+        if (tick % 20 === 10) {
+          show.hear(true, 1 + ((song + tick) % 3));
+        }
+        for (const punk of show.punks) {
+          const moving = FRAME_META[punk.frames[0]].dx > 0;
+          assert.ok(
+            moving || punk.x === punk.home,
+            `song ${song}: ${punk.id} does ${punk.loop} at ${punk.x}`,
+          );
+        }
+      }
+      show.hear(false, 0);
+      for (let tick = 0; tick < 40; tick += 1) {
+        show.tick(900);
+        for (const punk of show.punks) {
+          const moving = punk.loop === 'walk';
+          assert.ok(
+            moving || punk.x === punk.home,
+            `break ${song}: ${punk.id} does ${punk.loop} at ${punk.x}`,
+          );
+        }
+      }
+    }
+  });
+
+  it('C22: a stride that would carry a walker past its home stops on it', () => {
+    const show = new Show({ random: chance().next });
+    const billy = punkOf(show, 'billy');
+    billy.x = billy.home - 3;
+    show.tick();
+    assert.deepEqual([billy.state, billy.x], ['enter', billy.home - 1]);
+    show.tick();
+    assert.deepEqual([billy.state, billy.x], ['stage', billy.home]);
+  });
+
+  it('C22: a punk sent off and called back before its first step has not moved', () => {
+    const source = chance();
+    const show = new Show({ random: source.next });
+    arrive(show);
+    show.hear(true, 1);
+    source.queue.push(...DEAL, 0, 0);
+    show.hear(false, 0);
+    const billy = punkOf(show, 'billy');
+    assert.equal(billy.state, 'exit');
+    show.hear(true, 1);
+    assert.deepEqual([billy.state, billy.x], ['stage', billy.home]);
+    assert.ok(dancesOf(1).includes(billy.loop), billy.loop);
+  });
+
+  it('C22: a scene is kept until the break is dealt again, and chance is not asked meanwhile', () => {
+    const source = chance();
+    const show = new Show({ random: source.next });
+    arrive(show);
+    show.hear(true, 1);
+    show.hear(false, 0);
+    const scenes = show.punks.map((punk) => punk.loop);
+    const calls = source.calls;
+    // Every draw would say yes, if anything asked.
+    source.fallback = 0;
+    for (let tick = 0; tick < 3 * DANCE_HOLD_FRAMES; tick += 1) {
+      show.tick(900);
+      assert.deepEqual(
+        show.punks.map((punk) => punk.loop),
+        scenes,
+        `a scene changed after ${tick + 1} frames`,
+      );
+    }
+    assert.equal(source.calls, calls, 'chance was drawn inside a break');
+  });
+
   it('C22: strut drifts, and turns for home once it is more than 14 columns away', () => {
     const source = chance();
     const show = new Show({ random: source.next });
@@ -322,8 +570,10 @@ describe('the show', () => {
         show.tick();
       }
       show.hear(false, 0);
+      // Mo may be a few steps from home after a strut, but never in the wings.
       const mo = punkOf(show, 'mo');
-      assert.equal(mo.state, 'stage', `song ${song}: the stage is empty`);
+      assert.ok(mo.state === 'stage' || mo.state === 'enter', `song ${song}: mo is ${mo.state}`);
+      assert.ok(Math.abs(mo.x - mo.home) <= DRIFT_COLS + 2, `song ${song}: mo is at ${mo.x}`);
       const scenes = show.punks
         .filter((punk) => punk.state === 'stage' && punk.loop !== 'sleep')
         .map((punk) => punk.loop);
@@ -369,6 +619,7 @@ describe('the show', () => {
       show.tick();
       ticks += 1;
       assert.equal(billy.x, x - 2);
+      assert.ok(ticks < 1000, 'he never reaches the wings');
     }
     assert.equal(billy.state, 'off');
     assert.equal(billy.x, -WINGS_COLS - 2);
@@ -410,9 +661,7 @@ describe('the show', () => {
     // Left alone, he goes all the way.
     source.queue.push(0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0, 0.99);
     show.hear(false, 0);
-    while (spike.state === 'exit') {
-      show.tick();
-    }
+    tickUntil(show, () => spike.state !== 'exit');
     assert.equal(spike.x, STAGE.cols + WINGS_COLS + 2);
   });
 
@@ -473,9 +722,7 @@ describe('the show', () => {
     source.fallback = 0;
     show.hear(false, 0);
     assert.equal(show.animal, cat);
-    while (show.animal !== null) {
-      show.tick();
-    }
+    tickUntil(show, () => show.animal === null);
     assert.ok(cat.x > STAGE.cols + ANIMAL_WINGS_COLS);
   });
 
@@ -558,119 +805,13 @@ describe('the show', () => {
     }
   });
 
-  it('C22: a break that goes on is dealt again, between one and five minutes in', () => {
-    assert.deepEqual(REFRESH_MS, { min: 60000, max: 300000 });
-    const source = chance();
-    const show = new Show({ random: source.next });
-    assert.equal(
-      show.refreshMs,
-      60000 + 0.99 * 240000,
-      'chance decides how long, inside the range',
-    );
-    // Ticks that say nothing of their length leave the break no older.
-    arrive(show);
-    assert.equal(show.breakMs, 0);
-
-    // The next deal is drawn at the shortest: sixty seconds of 900 ms ticks.
-    // Six draws deal the scenes, one keeps everybody here, four keep them awake
-    // and turn Mo, one keeps the animals away, and the last winds the clock.
-    show.hear(true, 1);
-    source.queue.push(0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0);
-    show.hear(false, 0);
-    assert.equal(source.queue.length, 0, 'the draws are not the ones this test scripts');
-    assert.equal(show.refreshMs, 60000);
-    const before = show.punks.map((punk) => punk.loop);
-    for (let tick = 1; tick < 67; tick += 1) {
-      show.tick(900);
-      assert.deepEqual(
-        show.punks.map((punk) => punk.loop),
-        before,
-        `dealt again after ${tick * 0.9} s`,
-      );
-    }
-    show.tick(900);
-    const after = show.punks.map((punk) => punk.loop);
-    for (const [at, loop] of after.entries()) {
-      assert.notEqual(loop, before[at], `${show.punks[at].id} was dealt the scene it was in`);
-      assert.equal(LOOP_ENERGY[loop], 0, loop);
-    }
-    assert.equal(new Set(after).size, 3, `two share a scene: ${after}`);
-    for (const punk of show.punks) {
-      assert.deepEqual([punk.index, punk.held], [0, 0], `${punk.id} opens on its first frame`);
-    }
-    // And the clock starts again, with a length of its own.
-    assert.equal(show.breakMs, 0);
-    assert.equal(show.refreshMs, 60000 + 0.99 * 240000);
-  });
-
-  it('C22: a deal always changes something: no scene twice running, sleepers wake, wanderers return', () => {
-    const show = new Show({ random: mulberry32(11), refreshMinMs: 1000, refreshMaxMs: 3000 });
-    arrive(show);
-    let returned = 0;
-    let woke = 0;
-    for (let deal = 0; deal < 500; deal += 1) {
-      const before = show.punks.map((punk) => ({ ...punk }));
-      let ticks = 0;
-      while (show.breakMs + 900 < show.refreshMs) {
-        show.tick(900);
-        ticks += 1;
-      }
-      const settled = show.punks.map((punk) => ({ ...punk }));
-      show.tick(900);
-      assert.ok(ticks <= 3, `a deal of at most 3 s took ${ticks + 1} ticks`);
-      assert.equal(show.breakMs, 0, 'the clock was not started again');
-      for (const [at, punk] of show.punks.entries()) {
-        const was = settled[at];
-        if (was.state === 'off') {
-          assert.equal(punk.state, 'enter', `${punk.id} stayed in the wings`);
-          returned += 1;
-        } else if (was.state === 'stage' && punk.state === 'stage') {
-          assert.notEqual(punk.loop, was.loop, `deal ${deal}: ${punk.id} is still in ${was.loop}`);
-          woke += was.loop === 'sleep' ? 1 : 0;
-        }
-      }
-      const awake = show.punks
-        .filter((punk) => punk.state === 'stage' && punk.loop !== 'sleep')
-        .map((punk) => punk.loop);
-      assert.equal(new Set(awake).size, awake.length, `deal ${deal}: ${awake}`);
-      assert.equal(punkOf(show, 'mo').state, 'stage');
-      assert.ok(before.length === 3);
-    }
-    assert.ok(returned > 20, `only ${returned} returns in 500 deals`);
-    assert.ok(woke > 20, `only ${woke} sleepers woke in 500 deals`);
-  });
-
-  it('C22: music stops the clock of a break, and the next break starts it from nothing', () => {
-    const source = chance();
-    const show = new Show({ random: source.next, refreshMinMs: 5000, refreshMaxMs: 5000 });
-    arrive(show);
-    show.tick(900);
-    show.tick(900);
-    assert.equal(show.breakMs, 1800);
-    show.hear(true, 2);
-    const dancing = show.punks.map((punk) => punk.loop);
-    for (let tick = 0; tick < 12; tick += 1) {
-      show.tick(900);
-    }
-    assert.equal(show.breakMs, 1800, 'the break grew older while they danced');
-    assert.deepEqual(
-      show.punks.map((punk) => punk.loop),
-      dancing,
-      'a deal in the middle of a song',
-    );
-    show.hear(false, 0);
-    assert.equal(show.breakMs, 0);
-  });
-
-  it('C22: a longest that is under the shortest is the shortest', () => {
-    const show = new Show({ random: () => 0.5, refreshMinMs: 5000, refreshMaxMs: 1000 });
-    assert.deepEqual(show.refresh, { min: 5000, max: 5000 });
-    assert.equal(show.refreshMs, 5000);
-  });
-
   it('C22: a choice at the very top of the range is the last one, not one past it', () => {
     const show = new Show({ random: () => 1 });
     assert.equal(show.pick(['a', 'b', 'c']), 'c');
-    assert.equal(new Set(show.punks.map((punk) => punk.scene)).size, 3);
+    const dealt = show.punks.map((punk) => punk.scene);
+    assert.equal(new Set(dealt).size, 3);
+    for (const scene of dealt) {
+      assert.ok(BREAK_LOOPS.includes(scene), `dealt ${scene}`);
+    }
   });
 });

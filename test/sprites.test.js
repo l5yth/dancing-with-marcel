@@ -37,7 +37,8 @@ import {
 } from '../src/sprites/asciipunk.js';
 
 /**
- * Digest of everything the module exports, taken from the design project's
+ * Digest of every export but the function `mirror`, which the mirror tests
+ * below and `twist_l` inside the digest hold, taken from the design project's
  * own file on 2026-09-21, the handoff in which Spike's tips are dyed red. The
  * repository copy adds a licence header and JSDoc and must draw exactly what
  * that file draws.

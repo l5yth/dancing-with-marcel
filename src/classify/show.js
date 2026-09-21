@@ -120,6 +120,13 @@ export const BREAK_LOOPS = Object.freeze(
 );
 
 /**
+ * The scenes that bring a television. Homes are 36 columns apart and a set
+ * stands 17 columns in front of whoever watches it, so two neighbours facing
+ * each other would put their sets on the same cells. One screen a deal.
+ */
+const SCREENS = new Set(['n64', 'tv']);
+
+/**
  * The dances of a tier: loops of that energy that open on a dance frame, which
  * leaves out `walk`.
  *
@@ -290,8 +297,8 @@ export class Show {
    * A break begins, or has gone on long enough to be dealt again: deal the
    * scenes, and let chance send one punk to the wings, any of the others to
    * sleep, and an animal across the floor. Whoever wandered off last time
-   * comes back, and whoever slept wakes up, so that a deal always changes
-   * something.
+   * comes back, even from half way, and whoever slept wakes up, so that a deal
+   * always changes something.
    *
    * @returns {void}
    */
@@ -301,7 +308,10 @@ export class Show {
     const outer = onStage.filter((punk) => punk.id !== ANCHOR_PUNK);
     const leaver = outer.length > 0 && this.random() < WANDER_CHANCE ? this.pick(outer) : null;
     for (const punk of this.punks) {
-      if (punk.state === 'off') {
+      // In the wings, or still on the way there: a deal that fell while one
+      // was leaving could otherwise send the other after it, and leave the
+      // one in the middle alone.
+      if (punk.state === 'off' || punk.state === 'exit') {
         this.enter(punk);
       }
     }
@@ -324,17 +334,19 @@ export class Show {
   }
 
   /**
-   * Deal the between-song scenes, one a punk, no two alike, and nobody the
-   * scene it is already in.
+   * Deal the between-song scenes, one a punk, no two alike, nobody the scene
+   * it is already in, and only one of them with a television.
    *
    * @returns {void}
    */
   deal() {
-    const deck = [...BREAK_LOOPS];
-    for (let index = deck.length - 1; index > 0; index -= 1) {
+    const shuffled = [...BREAK_LOOPS];
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
       const other = Math.min(index, Math.floor(this.random() * (index + 1)));
-      [deck[index], deck[other]] = [deck[other], deck[index]];
+      [shuffled[index], shuffled[other]] = [shuffled[other], shuffled[index]];
     }
+    const screen = shuffled.find((scene) => SCREENS.has(scene));
+    const deck = shuffled.filter((scene) => !SCREENS.has(scene) || scene === screen);
     for (const punk of this.punks) {
       // There are more scenes than punks, so the deck always holds another.
       const card = deck.findIndex((scene) => scene !== punk.loop);
@@ -381,6 +393,9 @@ export class Show {
    * @returns {void}
    */
   dance(punk) {
+    if (this.strayed(punk)) {
+      return;
+    }
     const all = dancesOf(this.tier);
     const others = all.filter((loop) => loop !== punk.loop);
     const loop = this.pick(others.length > 0 ? others : all);
@@ -399,21 +414,61 @@ export class Show {
    * @returns {void}
    */
   settle(punk) {
+    if (this.strayed(punk)) {
+      return;
+    }
     const frames = punk.scene === 'sleep' ? EGGS.sleep : LOOPS[punk.scene];
     this.perform(punk, punk.scene, frames);
     this.faceCentre(punk);
   }
 
   /**
-   * Walk a punk home from wherever it is.
+   * Send a punk home first if a drifting dance has left it somewhere else.
+   * What it was about to be given waits until it arrives. Without this a punk
+   * who has strutted stays where the strut left it, and sits down to watch TV
+   * in its neighbour's lap.
+   *
+   * @param {PunkState} punk The punk.
+   * @returns {boolean} Whether it was away from home, and is now walking there.
+   */
+  strayed(punk) {
+    if (punk.x === punk.home) {
+      return false;
+    }
+    this.enter(punk);
+    return true;
+  }
+
+  /**
+   * Walk a punk home from wherever it is. One who is there already has arrived.
    *
    * @param {PunkState} punk The punk.
    * @returns {void}
    */
   enter(punk) {
+    if (punk.x === punk.home) {
+      this.arrive(punk);
+      return;
+    }
     punk.state = 'enter';
     punk.facing = punk.x < punk.home ? 1 : -1;
     this.perform(punk, 'walk', LOOPS.walk);
+  }
+
+  /**
+   * Stand a punk on its home and give it what the moment calls for.
+   *
+   * @param {PunkState} punk The punk.
+   * @returns {void}
+   */
+  arrive(punk) {
+    punk.x = punk.home;
+    punk.state = 'stage';
+    if (this.dancing) {
+      this.dance(punk);
+    } else {
+      this.settle(punk);
+    }
   }
 
   /**
@@ -484,15 +539,10 @@ export class Show {
     punk.x += FRAME_META[punk.frames[punk.index]].dx * punk.facing;
 
     if (punk.state === 'enter') {
+      // A stride may carry it past: it stops on its home all the same.
       const home = punk.facing > 0 ? punk.x >= punk.home : punk.x <= punk.home;
       if (home) {
-        punk.x = punk.home;
-        punk.state = 'stage';
-        if (this.dancing) {
-          this.dance(punk);
-        } else {
-          this.settle(punk);
-        }
+        this.arrive(punk);
       }
       return;
     }

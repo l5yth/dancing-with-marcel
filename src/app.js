@@ -21,6 +21,9 @@
  *
  * The show runs from the moment the page opens, before the microphone is
  * allowed: it is between songs until there is something to hear.
+ *
+ * The debug text is shown by `?debug=1` and shown or hidden at any time by
+ * pressing `d`, so the projector can be checked without reloading the page.
  */
 
 import { Capture } from './audio/capture.js';
@@ -65,13 +68,12 @@ function element(document, id) {
 export function boot(env) {
   const { document, location, navigator, window } = env;
   const config = parseConfig(location.search);
-  const debug = isDebug(location.search);
+  let debug = isDebug(location.search);
   const start = element(document, 'start');
   const label = element(document, 'label');
   const panel = element(document, 'panel');
   const overlay = element(document, 'overlay');
-  overlay.hidden = !debug;
-  element(document, 'repo').hidden = !debug;
+  const repo = element(document, 'repo');
 
   const stage = new Stage({ element: element(document, 'stage'), document });
   const director = new SceneDirector({ config });
@@ -91,6 +93,14 @@ export function boot(env) {
   // Whether the show has something new to draw before a tick moves it on.
   let fresh = true;
 
+  // Show or hide the debug text, with what was last heard if anything was.
+  const showDebug = () => {
+    overlay.hidden = !debug;
+    repo.hidden = !debug;
+    if (debug && last !== null) {
+      overlay.textContent = overlayText(last, config, director.tier, show.caption());
+    }
+  };
   const fit = () => stage.fit(window.innerWidth, window.innerHeight);
   // Dancing is locked to the beat: a frame per eighth note at the detected
   // tempo. Between songs there is no beat to follow, and the pace is unhurried.
@@ -157,6 +167,16 @@ export function boot(env) {
   });
   start.addEventListener('click', () => capture.start());
   window.addEventListener('resize', fit);
+  // `d` alone: with a modifier it is the browser's own, a bookmark or a
+  // duplicate tab, and a key held down would make the text flicker.
+  window.addEventListener('keydown', (event) => {
+    const plain = !event.ctrlKey && !event.metaKey && !event.altKey && !event.repeat;
+    if (plain && event.key.toLowerCase() === 'd') {
+      debug = !debug;
+      showDebug();
+    }
+  });
+  showDebug();
   fit();
   // The cell is measured once and kept, since the font does not change. It does
   // change once: the shipped face arrives after the first paint, and a grid

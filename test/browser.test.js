@@ -264,6 +264,31 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
     );
   });
 
+  it('C16: pressing d shows the debug text and pressing it again hides it', async () => {
+    const session = await page();
+    const shown = async () =>
+      session.evaluate(
+        `['overlay', 'repo'].map((id) => getComputedStyle(document.getElementById(id)).display !== 'none')`,
+      );
+    const press = async () => {
+      for (const type of ['keyDown', 'keyUp']) {
+        await session.send('Input.dispatchKeyEvent', {
+          type,
+          key: 'd',
+          code: 'KeyD',
+          text: type === 'keyDown' ? 'd' : undefined,
+          windowsVirtualKeyCode: 68,
+        });
+      }
+    };
+    assert.deepEqual(await shown(), [false, false], 'the page opens without it');
+    await press();
+    assert.deepEqual(await shown(), [true, true], 'd did not show it');
+    await press();
+    assert.deepEqual(await shown(), [false, false], 'd did not hide it again');
+    assert.deepEqual(session.logs, []);
+  });
+
   it('C18: the debug text is one block in the corner, on its own ground', async () => {
     const session = await page({ query: '?debug=1' });
     const look = await session.evaluate(

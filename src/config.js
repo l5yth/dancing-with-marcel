@@ -92,6 +92,13 @@ const PARAMS = {
   bpmSettleMs: { default: 3000, min: 0, max: 60000 },
   /** How far over the music threshold counts as full energy, in dB. */
   driveRangeDb: { default: 18, min: 1, max: 60 },
+  /**
+   * How long the room must ask for another energy tier before the punks follow
+   * it, in milliseconds. A song that sits on the line between two tiers
+   * crosses it twice a second, and every crossing would start all three on a
+   * new dance.
+   */
+  tierSettleMs: { default: 2000, min: 0, max: 60000 },
   /** How long one frame lasts between songs, in milliseconds. */
   breakFrameMs: { default: 900, min: 100, max: 60000 },
   /** Shortest a break goes on before its scenes are dealt again, in milliseconds. */

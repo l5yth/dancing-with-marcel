@@ -41,6 +41,7 @@ describe('config', () => {
       defaultBpm: 140,
       bpmSettleMs: 3000,
       driveRangeDb: 18,
+      tierSettleMs: 2000,
       breakFrameMs: 900,
       breakRefreshMinMs: 60000,
       breakRefreshMaxMs: 300000,
