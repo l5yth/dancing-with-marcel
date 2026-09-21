@@ -15,46 +15,40 @@
 */
 
 /**
- * @file Music or break (SPEC D2, D7). Four questions decide it, and the room
- * itself answers the first one:
+ * @file Music or break (SPEC D2, D7). The default is break: he dances only on
+ * sustained evidence of a pulse, and three questions have to agree.
  *
- * 1. **Is it loud?** Not against a fixed level, but against an adaptive floor
- *    that learns the room while nothing musical is playing. A quiet flat and a
- *    loud party then need no separate tuning.
- * 2. **Is it tonal?** The *most tonal* audible moment of the last
- *    `timbreWindowMs` is at most `maxFlatness`: one clear moment in a second
- *    and a half is enough. Music passes because instruments have peaks, even
- *    when a cymbal or a shout makes most of the window flat; applause, hiss,
- *    and chatter never dip below about 0.75, so nothing in their window
- *    qualifies. Requiring *every* moment to be tonal would reject music, not
- *    noise. Only audible moments count, since silence between drum hits is
- *    flat by definition. The margin is about 0.15, which is why `maxFlatness`
- *    is tunable and why the rehearsal is the check that matters (SPEC R2).
- * 3. **Is something happening?** Repeated onsets, or bass. Either is enough, so
- *    a thin track full of strumming and a bass-heavy one both pass, including a
- *    guitar intro before the band comes in. Onsets are counted, not measured,
- *    because one loud attack starts a feedback squeal too. This was meant to be
- *    what tells a PA hum from music, and it is not: a hum is all bass, and at a
- *    low level it scores onsets out of its own noise. That is question 4's job.
- * 4. **Does the level move?** The audible level spreads at least
- *    `minLevelSwingDb` over the timbre window, from its 10th percentile to its
- *    90th. In a calm room the floor sinks most of the way to its clamp, and
- *    then a fridge clears the bar by more than ten decibels, is very tonal, and
- *    is all bass: yes to all three questions above. What a machine does not do
- *    is change. It is a spread and not a level, so unlike a fixed threshold it
- *    holds at any microphone gain. Staying asks for a third of what entering
- *    did, and while a song is playing a window too empty to read counts as
- *    moving; see `update`.
+ * 1. **Is anything there?** The level peak sits over an adaptive floor that
+ *    learns the room, so a quiet flat and a loud party need no separate tuning.
+ * 2. **Does the level move?** It spreads at least `minLevelSwingDb` over the
+ *    timbre window. A veto on machines, which do not change: a fridge spreads
+ *    0.00 to 0.03 dB and the most heavily limited record 0.15. It is what
+ *    keeps out a mains hum, whose onset envelope aliases against
+ *    the hop and scores a tempo confidence of 0.92.
+ * 3. **Is there a pulse, and has there been for a while?** The median tempo
+ *    confidence of the last `pulseWindow` seconds is at least `pulseEnter`.
+ *    This is the question that decides. On the first real recordings the gate
+ *    ever met, a rumbling room scored a median of 0.075 and never over 0.10,
+ *    talking the same, and a punk song through a phone speaker 0.12 with
+ *    stretches over 0.14. It needs no setting for the microphone, because an
+ *    autocorrelation is normalised.
  *
- * The detected tempo deliberately takes no part in the decision. A steady tone
- * has a nearly constant onset envelope, which correlates with itself at every
- * lag and yields a confident tempo out of rounding noise; letting that vote
- * would hand the whine the very evidence it should fail on. Tempo decides how
- * fast Marcel dances, not whether he dances.
+ * Until 2026-09-20 there were two more questions, whether the sound was tonal
+ * and whether it had onsets or bass, and the pulse took no part. They had only
+ * ever met synthetic noise. A real room rumbles, which is a peaky spectrum and
+ * so "tonal", nearly all bass, and restless; a real voice is harmonic, bassy
+ * and lively. Both answered yes to everything and he danced to 94% of an empty
+ * room. The two questions are gone; what they measured is still shown.
  *
- * The answers feed the hysteresis of SPEC D2: `musicEnterMs` of yes to start
- * dancing, `breakHoldMs` of no to stop. Pure: time advances only through the
- * frame durations it is fed (SPEC invariant 4).
+ * Staying is easier than starting: a lower level, and `pulseLeave` instead of
+ * `pulseEnter`. And leaving has two
+ * clocks. When the sound stops, or stops moving, he stops after `breakHoldMs`.
+ * When it goes on without a pulse, as talking straight after a song does, he
+ * stops after `pulseLeaveMs`, which is long, because the pulse of a real song
+ * dips for seconds at a time.
+ *
+ * Pure: time advances only through the frame durations it is fed (SPEC
+ * invariant 4).
  */
 
 /** Level the floor starts at, in dBFS, before any audio has been heard. */
@@ -66,17 +60,23 @@ export const FLOOR_MIN_DB = -80;
 /** Loudest the floor may go, in dBFS: above this, nothing in the room would count as music. */
 export const FLOOR_MAX_DB = -25;
 
+/** How often the tempo confidence is sampled into the pulse window, in milliseconds. */
+export const PULSE_EVERY_MS = 1000;
+
+/**
+ * How long after the start the tempo confidence is not yet believed, in
+ * milliseconds. The analyzer reads the tempo from eight seconds of onset
+ * envelope and starts reporting at four. An autocorrelation over few beats
+ * flatters whatever it is given: applause, a voice and a band all showed a
+ * streak of "pulse" between the eighth and tenth second of their lives.
+ */
+export const PULSE_WARMUP_MS = 8000;
+
 /**
  * Share of the timbre window that must be audible before its spread is read:
  * below it, the onset of a steady sound would pass for movement.
  */
 const MIN_AUDIBLE_SHARE = 0.5;
-
-/**
- * Share of `minLevelSwingDb` that is enough to keep dancing. Entering asks for
- * all of it.
- */
-const STAY_SWING_SHARE = 1 / 3;
 
 /** Most hops a window may hold, whatever the frame length. */
 const MAX_WINDOW_HOPS = 4096;
@@ -113,10 +113,20 @@ export class Classifier {
      */
     this.state = 'break';
     /**
-     * Milliseconds the condition for leaving the current state has held.
+     * Milliseconds the audio has looked like music, while in `break`.
      * @type {number}
      */
     this.heldMs = 0;
+    /**
+     * Milliseconds the sound has been gone or still, while in `music`.
+     * @type {number}
+     */
+    this.quietMs = 0;
+    /**
+     * Milliseconds the pulse has been too faint to stay, while in `music`.
+     * @type {number}
+     */
+    this.faintMs = 0;
     /**
      * Learned level of the room, in dBFS.
      * @type {number}
@@ -129,25 +139,16 @@ export class Classifier {
     this.levelDb = null;
     /**
      * Most tonal (lowest) flatness among the audible hops of the timbre window,
-     * 1 when there are none.
+     * 1 when there are none. Shown, not asked.
      * @type {number}
      */
     this.flatness = 1;
     /**
      * Most bass among the audible hops of the timbre window, 0 when none.
+     * Shown, not asked.
      * @type {number}
      */
     this.bass = 0;
-    /**
-     * Strongest onset among the audible hops of the timbre window, 0 when none.
-     * @type {number}
-     */
-    this.flux = 0;
-    /**
-     * How many audible hops of the timbre window carry an onset.
-     * @type {number}
-     */
-    this.onsets = 0;
     /**
      * Spread of the audible level peak over the timbre window, from its 10th
      * to its 90th percentile in dB; 0 while less than half of it is audible.
@@ -161,13 +162,34 @@ export class Classifier {
      */
     this.swingKnown = false;
     /**
+     * The pulse evidence: median tempo confidence of the pulse window, 0 until
+     * half of it has been filled.
+     * @type {number}
+     */
+    this.pulse = 0;
+    /**
+     * Tempo confidence sampled once every {@link PULSE_EVERY_MS}, oldest first.
+     * @type {number[]}
+     */
+    this.confidences = [];
+    /**
+     * Milliseconds fed since the confidence was last sampled.
+     * @type {number}
+     */
+    this.sinceSampleMs = 0;
+    /**
+     * Milliseconds fed since the start, for the warm-up.
+     * @type {number}
+     */
+    this.fedMs = 0;
+    /**
      * Whether the audio looks like music right now, before the hysteresis.
      * @type {boolean}
      */
     this.musicLike = false;
     /**
-     * Level, flatness, and bass of each hop in the timbre window, oldest first.
-     * @type {SpectrumFrame[]}
+     * Flatness and bass of each hop in the timbre window, oldest first.
+     * @type {TimbreHop[]}
      */
     this.recent = [];
     /**
@@ -191,50 +213,83 @@ export class Classifier {
    * @returns {State} The state after this frame.
    */
   update(frame, frameMs) {
-    const { musicOverFloorDb, breakUnderFloorDb, musicEnterMs, breakHoldMs } = this.config;
+    const { config } = this;
     this.remember(frame, frameMs);
+    this.feel(frame, frameMs);
     const dancing = this.state === 'music';
-    // Which moments count as audible follows the threshold in force. While
-    // dancing that is the lower one: read a quiet passage against the entry
-    // threshold and its moments look like silence, silence reads as flat, and
-    // the song ends on a bridge. This is what makes the two thresholds differ
-    // beyond the memory of the timbre window.
-    const audibleDb = this.floorDb + (dancing ? breakUnderFloorDb : musicOverFloorDb);
+    // Which moments count as audible follows the threshold in force: staying
+    // needs less level than entering did, so a quiet passage is not a break.
+    const audibleDb = this.floorDb + (dancing ? config.breakUnderFloorDb : config.musicOverFloorDb);
     this.measure(audibleDb);
-
-    const tonal = this.flatness <= this.config.maxFlatness;
-    const pulse = this.onsets >= this.config.minOnsets || this.bass >= this.config.minBass;
-    // Staying needs less movement than entering did, like the two level
-    // thresholds: a limiter leaves a record hovering around one bar, and one
-    // bar for both dropped it twice in forty seconds. And while a song is
+    const audible = this.levelDb !== null && this.levelDb >= audibleDb;
+    // A veto on machines and nothing finer: a fridge spreads 0.00 to 0.03 dB
+    // and a record through a hard limiter 0.15 and up. While a song is
     // playing, a window too empty to read is not evidence of stillness: after
-    // a stop the spread is unreadable for half a window, which turned a stop
-    // of 1.5 s into a break 0.35 s after the band came back. To start dancing,
-    // though, the evidence has to be there.
-    const bar = this.config.minLevelSwingDb * (dancing ? STAY_SWING_SHARE : 1);
-    const moves = this.swingKnown ? this.swing >= bar : dancing;
-    // One threshold does both jobs: below it there is nothing audible to read a
-    // timbre from, so a separate level test would be saying the same thing twice.
-    this.musicLike = this.levelDb !== null && this.levelDb >= audibleDb && tonal && pulse && moves;
+    // a stop the spread is unreadable for half a window. To start, the
+    // evidence has to be there.
+    const moves = this.swingKnown ? this.swing >= config.minLevelSwingDb : dancing;
+    const alive = audible && moves;
 
     if (!dancing) {
+      this.musicLike = alive && this.pulse >= config.pulseEnter;
       this.heldMs = this.musicLike ? this.heldMs + frameMs : 0;
-      if (this.heldMs >= musicEnterMs) {
-        this.state = 'music';
-        this.heldMs = 0;
+      if (this.heldMs >= config.musicEnterMs) {
+        this.enter('music');
       }
     } else {
-      // Leaving needs less level than entering did, so a quiet passage in a
-      // song does not flip the state back and forth: `audibleDb` above already
-      // carries the lower threshold while dancing.
-      this.heldMs = this.musicLike ? 0 : this.heldMs + frameMs;
-      if (this.heldMs >= breakHoldMs) {
-        this.state = 'break';
-        this.heldMs = 0;
+      // Two clocks. The sound stopping is quick to see and quick to act on; a
+      // pulse that has gone while the sound goes on is neither, because the
+      // pulse of a real song dips for seconds at a time.
+      this.musicLike = alive && this.pulse >= config.pulseLeave;
+      this.quietMs = alive ? 0 : this.quietMs + frameMs;
+      this.faintMs = this.pulse >= config.pulseLeave ? 0 : this.faintMs + frameMs;
+      if (this.quietMs >= config.breakHoldMs || this.faintMs >= config.pulseLeaveMs) {
+        this.enter('break');
       }
     }
     this.adaptFloor(frameMs, dancing);
     return this.state;
+  }
+
+  /**
+   * Change state and start every clock again.
+   *
+   * @param {State} state The state to enter.
+   * @returns {void}
+   */
+  enter(state) {
+    this.state = state;
+    this.heldMs = 0;
+    this.quietMs = 0;
+    this.faintMs = 0;
+  }
+
+  /**
+   * Sample the tempo confidence once every {@link PULSE_EVERY_MS} and keep the
+   * median of the last `pulseWindow` samples. A median and not a mean, because
+   * a room throws the odd confident second and a song the odd empty one. A
+   * frame with no tempo counts as no confidence, so a steady sound, which has
+   * none, drains the window instead of leaving a song's evidence standing.
+   *
+   * @param {AnalyzerFrame} frame What the analyzer measured.
+   * @param {number} frameMs Duration of the audio the frame covers.
+   * @returns {void}
+   */
+  feel(frame, frameMs) {
+    this.fedMs += frameMs;
+    this.sinceSampleMs += frameMs;
+    if (this.sinceSampleMs < PULSE_EVERY_MS) {
+      return;
+    }
+    this.sinceSampleMs -= PULSE_EVERY_MS;
+    const believed = frame.tempo !== null && this.fedMs >= PULSE_WARMUP_MS;
+    this.confidences.push(believed ? /** @type {TempoEstimate} */ (frame.tempo).confidence : 0);
+    while (this.confidences.length > this.config.pulseWindow) {
+      this.confidences.shift();
+    }
+    const sorted = this.confidences.slice().sort((a, b) => a - b);
+    this.pulse =
+      sorted.length * 2 >= this.config.pulseWindow ? sorted[Math.floor(sorted.length / 2)] : 0;
   }
 
   /**
@@ -246,7 +301,7 @@ export class Classifier {
    */
   remember(frame, frameMs) {
     const hops = (/** @type {number} */ ms) => clamp(Math.round(ms / frameMs), 1, MAX_WINDOW_HOPS);
-    this.recent.push({ flux: frame.flux, flatness: frame.flatness, bass: frame.bass });
+    this.recent.push({ flatness: frame.flatness, bass: frame.bass });
     this.levels.push(frame.levelDb);
     const timbreHops = hops(this.config.timbreWindowMs);
     while (this.recent.length > timbreHops) {
@@ -262,7 +317,8 @@ export class Classifier {
   }
 
   /**
-   * Read the timbre of the audible hops in the window.
+   * Read the audible hops of the window: how far their level spreads, which is
+   * asked, and their timbre, which is only shown.
    *
    * @param {number} audibleDb Level at or above which a hop counts as audible.
    * @returns {void}
@@ -270,24 +326,14 @@ export class Classifier {
   measure(audibleDb) {
     let flatness = 1;
     let bass = 0;
-    let flux = 0;
-    let onsets = 0;
-    let audible = false;
     for (let index = 0; index < this.recent.length; index += 1) {
       if (this.levels[index] >= audibleDb) {
-        audible = true;
         flatness = Math.min(flatness, this.recent[index].flatness);
         bass = Math.max(bass, this.recent[index].bass);
-        flux = Math.max(flux, this.recent[index].flux);
-        if (this.recent[index].flux >= this.config.minFlux) {
-          onsets += 1;
-        }
       }
     }
-    this.flatness = audible ? flatness : 1;
-    this.bass = audible ? bass : 0;
-    this.flux = audible ? flux : 0;
-    this.onsets = onsets;
+    this.flatness = flatness;
+    this.bass = bass;
     const spread = this.spread(audibleDb);
     this.swingKnown = spread !== null;
     this.swing = spread ?? 0;

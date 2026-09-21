@@ -139,6 +139,99 @@ export function silence(seconds, sampleRate) {
 }
 
 /**
+ * A real room, as one was recorded: not hiss but rumble. Seven tenths of the
+ * energy sits under 200 Hz, the level wanders by several decibels, and now and
+ * then something thumps. At -48 dBFS RMS, which is a laptop microphone at a
+ * sane gain. Its spectrum is peaky, so it reads as tonal; it is nearly all
+ * bass; and it moves. It has no pulse.
+ *
+ * @param {number} seconds Duration.
+ * @param {number} sampleRate Sample rate in Hz.
+ * @param {() => number} [rand] Random source.
+ * @returns {Float32Array} The room.
+ */
+export function rumble(seconds, sampleRate, rand = mulberry32(SEED)) {
+  const length = Math.round(seconds * sampleRate);
+  const low = lowpass(lowpass(noise(length, rand), 160, sampleRate), 160, sampleRate);
+  const mid = lowpass(noise(length, rand), 900, sampleRate);
+  const out = new Float32Array(length);
+  // The level wanders: a random walk in decibels, a new target every 0.4 to 1.6 s.
+  let gainDb = 0;
+  let target = 0;
+  let until = 0;
+  for (let index = 0; index < length; index += 1) {
+    if (index >= until) {
+      target = (rand() * 2 - 1) * 5;
+      until = index + Math.round((1.5 + 4 * rand()) * sampleRate);
+    }
+    gainDb += (target - gainDb) / (1.2 * sampleRate);
+    out[index] =
+      (low[index] * 3 + mid[index] * 0.25 + (rand() * 2 - 1) * 0.02) * 10 ** (gainDb / 20);
+  }
+  // Something thumps, at no particular time: a door, a desk, a footstep.
+  for (let at = 0; at < length; at += Math.round((4 + 14 * rand()) * sampleRate)) {
+    const size = 0.3 + 0.7 * rand();
+    for (let index = 0; index < 0.25 * sampleRate && at + index < length; index += 1) {
+      out[at + index] +=
+        size *
+        Math.sin((2 * Math.PI * 70 * index) / sampleRate) *
+        Math.exp(-index / (0.05 * sampleRate));
+    }
+  }
+  return scaleToDb(out, -48);
+}
+
+/**
+ * A real voice, as one was recorded: voiced syllables, which are harmonic and so
+ * read as tonal, most of their energy in the first few harmonics and so nearly
+ * all bass, at four or five a second but never evenly, in phrases with pauses
+ * between them. At -30 dBFS RMS. It replaced a fixture of filtered-noise bursts
+ * on a near-regular grid, which was flatter than any voice and more rhythmic
+ * than one: about as rhythmic as a real song through a phone speaker, so no
+ * gate that asks about pulse could tell the two apart, and reality won.
+ *
+ * @param {number} seconds Duration.
+ * @param {number} sampleRate Sample rate in Hz.
+ * @param {() => number} [rand] Random source.
+ * @returns {Float32Array} The voice.
+ */
+export function voice(seconds, sampleRate, rand = mulberry32(SEED)) {
+  const length = Math.round(seconds * sampleRate);
+  const out = new Float32Array(length);
+  let position = Math.round(0.3 * sampleRate);
+  while (position < length) {
+    // A phrase of three to nine syllables, then a breath.
+    const syllables = 3 + Math.floor(rand() * 7);
+    for (let count = 0; count < syllables && position < length; count += 1) {
+      const span = Math.round((0.07 + 0.38 * rand() * rand()) * sampleRate);
+      const pitch = 105 + 80 * rand();
+      const glide = 1 + (rand() * 2 - 1) * 0.12;
+      const formant = 400 + 900 * rand();
+      const loud = 0.12 + 0.88 * rand() * rand();
+      let phase = 0;
+      for (let index = 0; index < span && position + index < length; index += 1) {
+        const t = index / span;
+        phase += (2 * Math.PI * pitch * (1 + (glide - 1) * t)) / sampleRate;
+        let sample = 0;
+        for (let harmonic = 1; harmonic <= 24; harmonic += 1) {
+          const hertz = pitch * harmonic;
+          const shape = 1 / harmonic + 0.6 * Math.exp(-(((hertz - formant) / 250) ** 2));
+          sample += shape * Math.sin(harmonic * phase);
+        }
+        const envelope = Math.sin(Math.PI * t) ** 0.7;
+        out[position + index] += loud * envelope * sample;
+      }
+      position += span + Math.round((0.01 + (rand() < 0.2 ? 0.5 : 0.1) * rand()) * sampleRate);
+    }
+    position += Math.round((0.35 + 0.9 * rand()) * sampleRate);
+  }
+  for (let index = 0; index < length; index += 1) {
+    out[index] += (rand() * 2 - 1) * 0.004;
+  }
+  return scaleToDb(out, -30);
+}
+
+/**
  * A quiet room: hiss at -74 dBFS RMS, low enough that the learned floor sinks
  * to its clamp. This is a calm flat at night, not the -60 dBFS of `room`.
  *
@@ -405,33 +498,6 @@ export function applause(seconds, sampleRate, rand = mulberry32(SEED)) {
     output[index] = (rand() * 2 - 1) * envelope;
   }
   return scaleToDb(output, -20);
-}
-
-/**
- * Speech-like noise at -25 dBFS RMS: noise limited to 200 Hz to 3 kHz under an
- * irregular envelope of 120 to 260 ms bursts separated by 40 to 180 ms gaps.
- *
- * @param {number} seconds Duration.
- * @param {number} sampleRate Sample rate in Hz.
- * @param {() => number} [rand] Random source.
- * @returns {Float32Array} The speech.
- */
-export function speech(seconds, sampleRate, rand = mulberry32(SEED)) {
-  const length = Math.round(seconds * sampleRate);
-  const envelope = new Float32Array(length);
-  const ramp = Math.round(0.005 * sampleRate);
-  for (let position = 0; position < length; ) {
-    const bursts = Math.round((0.12 + rand() * 0.14) * sampleRate);
-    for (let index = 0; index < bursts && position + index < length; index += 1) {
-      envelope[position + index] = Math.min(1, index / ramp, (bursts - 1 - index) / ramp);
-    }
-    position += bursts + Math.round((0.04 + rand() * 0.14) * sampleRate);
-  }
-  const band = lowpass(highpass(noise(length, rand), 200, sampleRate), 3000, sampleRate);
-  return scaleToDb(
-    band.map((sample, index) => sample * envelope[index]),
-    -25,
-  );
 }
 
 /**

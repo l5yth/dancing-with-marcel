@@ -170,10 +170,11 @@ describe('eval', () => {
   });
 
   it('C13: a track prints its spans and a file-summary, and the run ends with a summary', () => {
-    const audio = concat(room(3, DECODE_RATE), drums(160, 20, DECODE_RATE));
+    // A minute, so that the quarter of it the gate takes to be sure leaves a majority.
+    const audio = concat(room(3, DECODE_RATE), drums(160, 60, DECODE_RATE));
     const { code, out } = run(['punk.mp3'], { 'punk.mp3': audio });
     assert.equal(code, 0);
-    assert.match(out[0], /^file: punk\.mp3 from=0\.00 to=23\.0\d$/);
+    assert.match(out[0], /^file: punk\.mp3 from=0\.00 to=63\.0\d$/);
     assert.match(out[1], /^\s+0\.02 break$/);
     assert.ok(
       out.some((line) => /^\s+\d+\.\d\d music \(\d+ bpm\)$/.test(line)),
@@ -206,7 +207,7 @@ describe('eval', () => {
   it('C13: a tunable given on the command line reaches the pipeline', () => {
     // Long enough that the second or two it takes to be sure of a song does
     // not decide whether the fixture counts as mostly music.
-    const audio = concat(room(2, DECODE_RATE), drums(120, 24, DECODE_RATE));
+    const audio = concat(room(2, DECODE_RATE), drums(120, 90, DECODE_RATE));
     const loose = run(['a.mp3'], { 'a.mp3': audio });
     const strict = run(['a.mp3', '--musicOverFloorDb', '60', '--breakUnderFloorDb', '59'], {
       'a.mp3': audio,
@@ -252,7 +253,7 @@ describe('eval', () => {
     const dir = await mkdtemp(join(tmpdir(), 'marcel-eval-'));
     made.push(dir);
     const file = join(dir, 'drums.wav');
-    await writeFile(file, wavBytes(drums(120, 60, DECODE_RATE), DECODE_RATE));
+    await writeFile(file, wavBytes(drums(120, 180, DECODE_RATE), DECODE_RATE));
     const result = spawnSync(process.execPath, [join(REPO, 'scripts/eval.mjs'), file], {
       cwd: REPO,
       encoding: 'utf8',

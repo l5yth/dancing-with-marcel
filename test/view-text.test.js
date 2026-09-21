@@ -38,9 +38,8 @@ describe('view text', () => {
       floorDb: -58.5,
       flatness: 0.42,
       bass: 0.71,
-      flux: 1.23,
-      onsets: 37,
       swing: 1.284,
+      pulse: 0.2168,
       state: 'music',
       bpm: 179.6,
       confidence: 0.44,
@@ -50,14 +49,13 @@ describe('view text', () => {
     const lines = overlayText(event, DEFAULTS, 'headbang').split('\n');
     assert.equal(lines[0], 'state    music   scene headbang');
     assert.match(lines[1], /^level\s+-31\.2 dB\s+floor -58\.5 dB\s+need -46\.5 dB$/);
-    assert.match(lines[2], /^flatness 0\.42\s+need at most 0\.6$/);
-    assert.match(lines[3], /^bass\s+0\.71\s+need at least 0\.15$/);
-    assert.match(lines[4], /^onsets\s+37 of them, loudest 1\.23\s+need 4 over 0\.1$/);
-    // The fourth question, shown like the rest: it is the one that tells a
-    // fridge from a song, so it is the one to read in a calm room.
-    assert.match(lines[5], /^swing\s+1\.28 dB\s+need at least 0\.3$/);
-    assert.match(lines[6], /^tempo\s+180 bpm at 0\.44\s+need 0\.15$/);
-    assert.equal(lines[7], 'dance    179.6 bpm');
+    assert.match(lines[2], /^swing\s+1\.28 dB\s+need at least 0\.1$/);
+    // The question that decides, with both of its bars.
+    assert.match(lines[3], /^pulse\s+0\.217\s+need 0\.15 to start, 0\.09 to stay$/);
+    assert.match(lines[4], /^tempo\s+180 bpm at 0\.44\s+need 0\.15$/);
+    // Still measured, no longer asked: a bar beside them would be a lie.
+    assert.match(lines[5], /^timbre\s+flatness 0\.42\s+bass 0\.71\s+\(shown, not asked\)$/);
+    assert.equal(lines[6], 'dance    179.6 bpm');
   });
 
   it('unit: the overlay says when no tempo has been found and the dance speed is a guess', () => {
@@ -68,9 +66,8 @@ describe('view text', () => {
       floorDb: -60,
       flatness: 1,
       bass: 0,
-      flux: 0,
-      onsets: 0,
       swing: 0,
+      pulse: 0,
       state: 'break',
       bpm: null,
       confidence: 0,
@@ -79,8 +76,9 @@ describe('view text', () => {
     };
     const lines = overlayText(event, DEFAULTS, 'smoke').split('\n');
     assert.match(lines[0], /^state\s+break\s+scene smoke$/);
-    assert.match(lines[5], /^swing\s+0\.00 dB/);
-    assert.match(lines[6], /^tempo\s+none bpm at 0\.00/);
-    assert.equal(lines[7], 'dance    140.0 bpm (default)');
+    assert.match(lines[2], /^swing\s+0\.00 dB/);
+    assert.match(lines[3], /^pulse\s+0\.000/);
+    assert.match(lines[4], /^tempo\s+none bpm at 0\.00/);
+    assert.equal(lines[6], 'dance    140.0 bpm (default)');
   });
 });

@@ -43,7 +43,9 @@ async function page({ query = '', window } = {}) {
   const session = await openPage({
     browser: /** @type {string} */ (BROWSER),
     root: REPO,
-    audio: concat(room(2, RATE), drums(120, 12, RATE)),
+    // Forty seconds of drums before the loop comes round: the gate defaults to
+    // break and takes about fifteen of them to be sure (SPEC D7).
+    audio: concat(room(2, RATE), drums(120, 40, RATE)),
     sampleRate: RATE,
     query,
     window,
@@ -102,7 +104,7 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
         /^state\s+music\s+scene \w+$/m.test(
           String(await session.evaluate(`document.getElementById('overlay').textContent`)),
         ),
-      20000,
+      35000,
     );
     assert.ok(heard, 'the drums were never heard');
     assert.match(
@@ -116,7 +118,7 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
     );
     assert.match(overlay, /^state\s+music\s+scene \w+$/m);
     assert.match(overlay, /^level\s+-\d+\.\d dB\s+floor/m);
-    assert.match(overlay, /^onsets\s+\d+ of them/m);
+    assert.match(overlay, /^pulse\s+0\.\d{3}\s+need/m);
 
     const frames = new Set();
     for (let look = 0; look < 30; look += 1) {

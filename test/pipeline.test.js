@@ -30,11 +30,20 @@ const RATE = 44100;
  */
 function pipeline(overrides = {}) {
   return new Pipeline({
-    // The frames below hold one level for seconds, to examine the tempo rules
-    // and nothing else. Under the defaults a constant level is never music,
-    // so the fourth question is switched off here; the audio fixtures in
-    // classifier.test.js keep it on.
-    config: Object.freeze({ ...DEFAULTS, minLevelSwingDb: 0, ...overrides }),
+    // The frames below are hand-made, to examine the rules by which a tempo
+    // is adopted and nothing else. Two of the gate's questions are about
+    // things such frames do not have, a level that moves and a pulse that has
+    // lasted, so both are switched off, and entry is as quick as these tests
+    // were written for. Every test asserts that he is dancing, so none of them
+    // can pass by never starting. The audio fixtures keep the defaults.
+    config: Object.freeze({
+      ...DEFAULTS,
+      minLevelSwingDb: 0,
+      pulseEnter: 0,
+      pulseLeave: 0,
+      musicEnterMs: 1000,
+      ...overrides,
+    }),
     sampleRate: RATE,
   });
 }
@@ -184,7 +193,9 @@ describe('pipeline', () => {
     // The frames hold one level, so the fourth question is switched off; and
     // the state is asserted, because for a while this test passed without him
     // ever dancing, on the default tempo of a pipeline that stayed in `break`.
-    const config = parseConfig('?bpmMin=100&bpmMax=180&minLevelSwingDb=0');
+    const config = parseConfig(
+      '?bpmMin=100&bpmMax=180&minLevelSwingDb=0&pulseEnter=0&pulseLeave=0&musicEnterMs=1000',
+    );
     const instance = new Pipeline({ config, sampleRate: RATE });
     for (const bpm of [100, 140, 180]) {
       const event = feed(instance, { levelDb: LOUD, bpm, confidence: 0.9, ms: 4000 });

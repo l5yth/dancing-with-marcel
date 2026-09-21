@@ -70,6 +70,12 @@ async function click(document) {
 const RATE = 48000;
 
 /**
+ * Seconds of drums after which he is dancing, from a cold start: the gate
+ * defaults to break and takes its time to be sure (SPEC D7).
+ */
+const WARM_S = 22;
+
+/**
  * Post audio to the page in 512-sample frames, like the worklet would.
  *
  * @param {any} stack The fake audio stack.
@@ -157,7 +163,7 @@ describe('app', () => {
     const beforeMusic = document.elements.stage.textContent;
     assert.ok(BREAK_LOOPS.includes(director.loop), 'between songs to begin with');
 
-    push(stack, drums(120, 4, RATE));
+    push(stack, drums(120, WARM_S, RATE));
     window.runFrame(16);
     assert.notEqual(document.elements.stage.textContent, beforeMusic, 'the scene changed');
     assert.equal(document.elements.label.textContent.startsWith('music'), true);
@@ -171,9 +177,9 @@ describe('app', () => {
     const { stack, document, window, env } = setup();
     boot(env);
     await click(document);
-    // Long enough for the tempo to lock, so the dance tempo is the detected
-    // one and not the default it would fall back to.
-    push(stack, drums(120, 8, RATE));
+    // Long enough for the gate to be sure and the tempo to lock, so the dance
+    // tempo is the detected one and not the default it would fall back to.
+    push(stack, drums(120, WARM_S, RATE));
 
     /**
      * The frame drawn at a moment.
@@ -237,7 +243,8 @@ describe('app', () => {
     });
     const { director } = boot(env);
     await click(document);
-    push(stack, drums(120, 2, RATE));
+    // He has to be dancing: a break holds its scene until the music returns.
+    push(stack, drums(120, WARM_S, RATE));
     assert.ok(director.heldMs > 0, 'no time reached the director');
     const first = director.loop;
     let changed = false;
@@ -273,14 +280,15 @@ describe('app', () => {
     assert.equal(document.elements.label.textContent, 'break');
   });
 
-  it('unit: music turns the word to music after musicEnterMs, not before', async () => {
+  it('unit: the word turns to music once the gate is sure, not before', async () => {
     const { stack, document, env } = setup();
     boot(env);
     await click(document);
-    push(stack, drums(120, 0.8, RATE));
+    // Five seconds of the clearest drums there are: not yet. The default is break.
+    push(stack, drums(120, 5, RATE));
     assert.equal(document.elements.label.textContent, 'break');
-    push(stack, drums(120, 2, RATE));
-    assert.equal(document.elements.label.textContent, 'music');
+    push(stack, drums(120, WARM_S, RATE));
+    assert.match(document.elements.label.textContent, /^music/);
   });
 
   it('unit: quiet frames keep the word at break', async () => {
@@ -308,7 +316,7 @@ describe('app', () => {
     push(debug.stack, drums(120, 3, RATE));
     assert.match(
       debug.document.elements.overlay.textContent,
-      /^state\s+music\s+scene \w+\nlevel\s+-\d/,
+      /^state\s+(music|break)\s+scene \w+\nlevel\s+-\d/,
     );
 
     const plain = setup();

@@ -58,11 +58,10 @@ export function overlayText(event, config, scene) {
   return [
     `state    ${event.state}   scene ${scene}`,
     `level    ${event.levelDb.toFixed(1)} dB   floor ${event.floorDb.toFixed(1)} dB   need ${(event.floorDb + config.musicOverFloorDb).toFixed(1)} dB`,
-    `flatness ${event.flatness.toFixed(2)}   need at most ${config.maxFlatness}`,
-    `bass     ${event.bass.toFixed(2)}   need at least ${config.minBass}`,
-    `onsets   ${event.onsets} of them, loudest ${event.flux.toFixed(2)}   need ${config.minOnsets} over ${config.minFlux}`,
     `swing    ${event.swing.toFixed(2)} dB   need at least ${config.minLevelSwingDb}`,
+    `pulse    ${event.pulse.toFixed(3)}   need ${config.pulseEnter} to start, ${config.pulseLeave} to stay`,
     `tempo    ${bpm} bpm at ${event.confidence.toFixed(2)}   need ${config.tempoMinConfidence}`,
+    `timbre   flatness ${event.flatness.toFixed(2)}   bass ${event.bass.toFixed(2)}   (shown, not asked)`,
     `dance    ${event.danceBpm.toFixed(1)} bpm${event.locked ? '' : ' (default)'}`,
   ].join('\n');
 }

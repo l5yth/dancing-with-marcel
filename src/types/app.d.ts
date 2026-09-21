@@ -53,16 +53,16 @@ interface Config {
   musicOverFloorDb: number;
   /** How far above the room floor music must stay to keep dancing, in dB. */
   breakUnderFloorDb: number;
-  /** Flattest spectrum that still counts as music, from 0 for a tone to 1 for noise. */
-  maxFlatness: number;
-  /** Least bass that counts as a pulse, as a share of the energy. */
-  minBass: number;
-  /** Onset strength at which a moment counts as an onset rather than a steady sound. */
-  minFlux: number;
-  /** How many onsets the timbre window needs before the audio counts as moving. */
-  minOnsets: number;
   /** How far the audible level must spread over the timbre window, in dB. */
   minLevelSwingDb: number;
+  /** Pulse evidence needed to start dancing, from 0 to 1. */
+  pulseEnter: number;
+  /** Pulse evidence that keeps him dancing, from 0 to 1. */
+  pulseLeave: number;
+  /** How long the pulse may stay under `pulseLeave` before he stops, in milliseconds. */
+  pulseLeaveMs: number;
+  /** How many one-second tempo confidences the pulse evidence is the median of. */
+  pulseWindow: number;
   /** How far back tonality and bass are read, in milliseconds. */
   timbreWindowMs: number;
   /** How fast the room floor climbs back towards a louder room, in dB per second. */
@@ -100,6 +100,14 @@ interface TempoEstimate {
   bpm: number;
   /** How strongly the audio repeats at that period, from 0 to 1. */
   confidence: number;
+}
+
+/** What the classifier keeps of one hop's timbre: shown in the overlay, not asked. */
+interface TimbreHop {
+  /** Spectral flatness, 0 for a tone and 1 for white noise. */
+  flatness: number;
+  /** Share of the energy below the bass frequency. */
+  bass: number;
 }
 
 /** What one frame's spectrum looks like. */
@@ -140,12 +148,10 @@ interface PipelineEvent {
   flatness: number;
   /** Most bass among the audible hops of the timbre window. */
   bass: number;
-  /** Strongest onset among the audible hops of the timbre window. */
-  flux: number;
-  /** How many audible hops of the timbre window carry an onset. */
-  onsets: number;
   /** Spread of the audible level over the timbre window, in dB. */
   swing: number;
+  /** Pulse evidence: median tempo confidence of the pulse window. */
+  pulse: number;
   /** Classifier state. */
   state: State;
   /** Latest tempo in beats per minute, or `null` while there is none. */

@@ -30,31 +30,46 @@ const PARAMS = {
   musicOverFloorDb: { default: 12, min: 0, max: 60 },
   /** How far above the room floor music must stay to keep dancing, in dB. */
   breakUnderFloorDb: { default: 8, min: 0, max: 60 },
-  /** Flattest spectrum that still counts as music, from 0 for a tone to 1 for noise. */
-  maxFlatness: { default: 0.6, min: 0, max: 1 },
-  /** Least bass that counts as a pulse, as a share of the energy. */
-  minBass: { default: 0.15, min: 0, max: 1 },
-  /** Onset strength at which a moment counts as an onset rather than a steady sound. */
-  minFlux: { default: 0.1, min: 0, max: 10 },
-  /** How many onsets the timbre window needs before the audio counts as moving. */
-  minOnsets: { default: 4, min: 1, max: 200 },
+  /**
+   * Pulse evidence needed to start dancing: the median tempo confidence of the
+   * last `pulseWindow` seconds. This is the question that decides. Measured on
+   * real recordings: a rumbling room and a voice have a median of 0.075 and
+   * never pass 0.10, and in three minutes of them no streak reaches this bar;
+   * a punk song through a phone speaker sits at 0.12 with streaks of six
+   * seconds over it; records played clean sit at 0.21 to 0.27. Lower it
+   * and he starts sooner and is fooled sooner.
+   */
+  pulseEnter: { default: 0.15, min: 0, max: 1 },
+  /** Pulse evidence that keeps him dancing; under it for `pulseLeaveMs`, he stops. */
+  pulseLeave: { default: 0.09, min: 0, max: 1 },
+  /**
+   * How long the pulse may stay under `pulseLeave` before he stops, in
+   * milliseconds. Long, because the pulse of a real song dips for seconds at a
+   * time; it is also how long he dances on into talking that follows a song
+   * with no silence between them.
+   */
+  pulseLeaveMs: { default: 10000, min: 0, max: 120000 },
+  /** How many one-second tempo confidences the pulse evidence is the median of. */
+  pulseWindow: { default: 8, min: 1, max: 60 },
   /**
    * How far the audible level must spread over the timbre window, from its
-   * 10th to its 90th percentile, in dB, before he starts dancing; a third of
-   * it keeps him dancing. Music moves and a machine does not: a fridge
-   * measures 0.00, and the calmest twentieth of the reference records 0.4 to
-   * 0.6. It is a spread and not a level, so it needs no setting for the room
-   * or the microphone. A record through a hard limiter moves about 0.25 and
-   * is slow to start; lower this if the PA is limited. 0 switches the
-   * question off.
+   * 10th to its 90th percentile, in dB. A veto on machines, which do not
+   * change: a fridge measures 0.00 to 0.03 and a record through a hard limiter
+   * 0.15 and up. It is a spread and not a level, so it needs no setting for
+   * the room or the microphone. 0 switches the question off.
    */
-  minLevelSwingDb: { default: 0.3, min: 0, max: 20 },
+  minLevelSwingDb: { default: 0.1, min: 0, max: 20 },
   /** How far back tonality and bass are read, in milliseconds. */
   timbreWindowMs: { default: 1500, min: 100, max: 10000 },
-  /** How fast the room floor climbs back towards a louder room, in dB per second. */
-  floorRiseDbPerSec: { default: 3, min: 0, max: 60 },
+  /**
+   * How fast the room floor climbs back towards a louder room, in dB per second.
+   * Slow, because being sure of a song takes about ten seconds and the floor
+   * must not have climbed to meet it by then: at 3 dB/s it had, and the song
+   * was sat out.
+   */
+  floorRiseDbPerSec: { default: 0.5, min: 0, max: 60 },
   /** Sustained music-like time needed to enter `music`, in milliseconds. */
-  musicEnterMs: { default: 1000, min: 0, max: 60000 },
+  musicEnterMs: { default: 3000, min: 0, max: 60000 },
   /** Sustained break-like time needed to leave `music`, in milliseconds. */
   breakHoldMs: { default: 2000, min: 0, max: 60000 },
   /** How far back the level looks for its loudest hop, in milliseconds. */
