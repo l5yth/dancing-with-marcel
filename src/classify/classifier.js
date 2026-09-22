@@ -67,6 +67,13 @@ export const FLOOR_MAX_DB = -25;
 export const PULSE_EVERY_MS = 1000;
 
 /**
+ * How often the room level is sampled into the floor's window, in
+ * milliseconds. One sample is the quietest moment of that second, so a sound
+ * with gaps is remembered by its gaps.
+ */
+export const ROOM_EVERY_MS = 1000;
+
+/**
  * How long after the start the tempo confidence is not yet believed, in
  * milliseconds. The analyzer reads the tempo from eight seconds of onset
  * envelope and starts reporting at four. An autocorrelation over few beats
@@ -83,6 +90,9 @@ const MIN_AUDIBLE_SHARE = 0.5;
 
 /** Most hops a window may hold, whatever the frame length. */
 const MAX_WINDOW_HOPS = 4096;
+
+/** Most seconds of room level the floor may remember. */
+const MAX_ROOM_SAMPLES = 900;
 
 /**
  * Keep a value inside a range.
@@ -135,6 +145,22 @@ export class Classifier {
      * @type {number}
      */
     this.floorDb = FLOOR_START_DB;
+    /**
+     * The quietest moment of each second the room was listened to, in dBFS,
+     * oldest first. The floor is a percentile of these.
+     * @type {number[]}
+     */
+    this.roomLevels = [];
+    /**
+     * Quietest level of the second being gathered, in dBFS.
+     * @type {number}
+     */
+    this.quietestDb = Number.POSITIVE_INFINITY;
+    /**
+     * Milliseconds of room heard since the last sample was taken.
+     * @type {number}
+     */
+    this.sinceRoomMs = 0;
     /**
      * Loudest hop of the level window, in dBFS; `null` before the first frame.
      * @type {number | null}
@@ -391,17 +417,26 @@ export class Classifier {
 
   /**
    * Let the floor learn the room. It drops to a new quiet level at once and
-   * climbs back slowly, and it holds still while a song is playing, or the
-   * audio looks like one, or the pulse evidence is there on its own, so
-   * neither a song under way nor a song that was already playing when the
-   * page opened can pull the floor up behind it.
+   * climbs back at `floorRiseDbPerSec`, and it listens only while nothing is
+   * playing, so neither a song under way nor a song that was already playing
+   * when the page opened can pull the floor up behind it.
+   *
+   * What it climbs towards is the room of the last `floorWindowMs`, not
+   * whatever is playing this second: {@link Classifier#roomOf}. The owner's
+   * radio, 2026-09-22, played a song whose intro was a minute and a half of
+   * held sound with no beat; the floor climbed to the intro's own level, then
+   * to its ceiling, and the song behind the intro never cleared the bar. No
+   * rate answers that, since the intro is exactly as loud for exactly as long
+   * as a louder room that has to be learned. A window does: ninety seconds of
+   * held sound cannot outvote the three minutes of room around it.
    *
    * Holding still only once the state had turned was tried on 2026-09-20 and
    * withdrawn the same day. It was meant to let a wrong first impression
    * correct itself, and it cannot: the state turns within a second and holds
    * the floor anyway. What it did do was chase every song through the 1.75 s
    * it takes to be sure of one, lift the bar 3 dB, and lose the quiet ones: a
-   * band ten decibels over the room went from 97% music to never heard.
+   * band ten decibels over the room went from 97% music to never heard. The
+   * rate itself was withdrawn on 2026-09-22 for the window above.
    *
    * Holding still only while all three questions said yes was the rule until
    * 2026-09-22, and it lost songs on the radio: a song's own quiet bar, or a
@@ -430,9 +465,52 @@ export class Classifier {
     if (this.musicLike || dancing || (this.pulsing && !this.still) || this.levelDb === null) {
       return;
     }
+    this.quietestDb = Math.min(this.quietestDb, this.levelDb);
+    this.sinceRoomMs += frameMs;
+    if (this.sinceRoomMs >= ROOM_EVERY_MS) {
+      this.sinceRoomMs -= ROOM_EVERY_MS;
+      this.roomLevels.push(this.quietestDb);
+      this.quietestDb = Number.POSITIVE_INFINITY;
+      while (this.roomLevels.length > this.roomKept()) {
+        this.roomLevels.shift();
+      }
+    }
     // A quieter room is taken at once and a louder one only at `rise` a frame,
-    // which is one minimum: below the floor the target wins, above it the climb does.
+    // which is one minimum: below the floor the target wins, above it the climb
+    // does. What it climbs towards is the room of the last few minutes, and
+    // never more than what is audible now.
     const rise = (this.config.floorRiseDbPerSec * frameMs) / 1000;
-    this.floorDb = clamp(Math.min(this.levelDb, this.floorDb + rise), FLOOR_MIN_DB, FLOOR_MAX_DB);
+    const target = Math.min(this.roomOf(), this.levelDb);
+    this.floorDb = clamp(Math.min(target, this.floorDb + rise), FLOOR_MIN_DB, FLOOR_MAX_DB);
+  }
+
+  /**
+   * How many seconds of room level the window holds.
+   *
+   * @returns {number} The count.
+   */
+  roomKept() {
+    return clamp(Math.round(this.config.floorWindowMs / ROOM_EVERY_MS), 1, MAX_ROOM_SAMPLES);
+  }
+
+  /**
+   * The level the room has been under for all but `floorPercentile` of the
+   * window: the rank that leaves that share of the window below it.
+   *
+   * A window not yet full is read over what it holds, so the page starts
+   * learning from its first second. Nothing is lost by that: the floor still
+   * only climbs at `floorRiseDbPerSec`, so a song already playing when the
+   * page opened is not taken for the room before the gate has had its say.
+   *
+   * @returns {number} The level, in dBFS, or the floor as it stands before any
+   *   second has been gathered.
+   */
+  roomOf() {
+    const heard = this.roomLevels.length;
+    if (heard === 0) {
+      return this.floorDb;
+    }
+    const sorted = this.roomLevels.slice().sort((a, b) => a - b);
+    return sorted[clamp(Math.floor(heard * this.config.floorPercentile), 0, heard - 1)];
   }
 }

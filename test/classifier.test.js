@@ -151,7 +151,14 @@ describe('a calm room', () => {
     // audible at all is sixteen decibels over it. A fridge or a fan is also
     // very tonal and all bass, so it answered yes to all three questions and
     // Marcel danced to it within a second. What it does not do is move.
-    const { events, changes } = run(concat(quietRoom(20, RATE), hum(30, RATE)));
+    // A ten-second window, so the hum becomes the room inside the fixture.
+    // At the configured three minutes a fridge that has just switched on is
+    // not the room yet and is not learned for as long, which is the point of
+    // the window (C21) and costs nothing here: what keeps the fridge out is
+    // that it does not move.
+    const { events, changes } = run(concat(quietRoom(20, RATE), hum(60, RATE)), {
+      config: { floorWindowMs: 10000 },
+    });
     const onset = events.filter((event) => event.time > 20.2 && event.time < 21.2);
     assert.ok(onset.length > 50);
     assert.ok(
@@ -177,10 +184,11 @@ describe('a calm room', () => {
     const before = /** @type {PipelineEvent} */ (events.find((event) => event.time > 20));
     const last = /** @type {PipelineEvent} */ (events.at(-1));
     const learned = DEFAULTS.floorRiseDbPerSec * 25;
+
     const under = last.levelDb - DEFAULTS.musicOverFloorDb - 1;
     assert.ok(
       last.floorDb >= Math.min(before.floorDb + learned, under) && last.floorDb <= last.levelDb,
-      `after thirty seconds of hum the floor went from ${before.floorDb.toFixed(1)} to ${last.floorDb.toFixed(1)}, the hum at ${last.levelDb.toFixed(1)}`,
+      `after a minute of hum the floor went from ${before.floorDb.toFixed(1)} to ${last.floorDb.toFixed(1)}, the hum at ${last.levelDb.toFixed(1)}`,
     );
     assert.ok(
       last.levelDb < last.floorDb + DEFAULTS.musicOverFloorDb,
@@ -657,7 +665,10 @@ describe('classifier', () => {
   });
 
   it('unit: the floor learns a quiet room at once and a louder one slowly', () => {
-    const classifier = new Classifier(DEFAULTS);
+    // A two-second window, so the quiet second ages out of it in the time the
+    // test runs. At the configured three minutes it would take three minutes,
+    // which is the point of the window and is covered by C21.
+    const classifier = new Classifier({ ...DEFAULTS, floorWindowMs: 2000 });
     assert.equal(classifier.floorDb, FLOOR_START_DB);
     /**
      * Feed frames of a constant level.
@@ -673,11 +684,38 @@ describe('classifier', () => {
     };
     feed(-70, 50);
     assert.ok(Math.abs(classifier.floorDb - -70) < 1e-9, `fell to ${classifier.floorDb}`);
-    feed(-40, 1000);
+    feed(-40, 4000);
     assert.ok(
       classifier.floorDb > -70 && classifier.floorDb < -60,
       `rose slowly to ${classifier.floorDb}`,
     );
+  });
+
+  it('C21: the floor climbs towards the room of the window, not towards this second', () => {
+    // The same rise, with a minute of quiet still in the window: a sound that
+    // has been loud for ten seconds is not yet the room, and the floor stays
+    // where the room was. This is the owner's on-ramp, at the frame level.
+    const classifier = new Classifier({ ...DEFAULTS, floorWindowMs: 180000 });
+    /**
+     * Feed frames of a constant level.
+     *
+     * @param {number} levelDb The level.
+     * @param {number} ms How long.
+     * @returns {void}
+     */
+    const feed = (levelDb, ms) => {
+      for (let elapsed = 0; elapsed < ms; elapsed += 10) {
+        classifier.update({ time: 0, levelDb, flux: 0, flatness: 1, bass: 0, tempo: null }, 10);
+      }
+    };
+    feed(-70, 60000);
+    assert.ok(Math.abs(classifier.floorDb - -70) < 1e-9, `fell to ${classifier.floorDb}`);
+    feed(-40, 30000);
+    assert.equal(classifier.floorDb, -70, 'thirty seconds of noise became the room');
+    assert.equal(classifier.roomOf(), -70);
+    // Once it has been the room for most of the window, it is the room.
+    feed(-40, 300000);
+    assert.equal(classifier.floorDb, -40);
   });
 
   it('unit: the floor stays within its limits', () => {
@@ -689,7 +727,7 @@ describe('classifier', () => {
     assert.equal(FLOOR_MIN_DB, -80, 'SPEC D10 states the floor is clamped to -80 dBFS');
 
     const loud = new Classifier(DEFAULTS);
-    for (let index = 0; index < 20000; index += 1) {
+    for (let index = 0; index < 60000; index += 1) {
       loud.update({ time: 0, levelDb: 0, flux: 0, flatness: 1, bass: 0, tempo: null }, 10);
     }
     assert.equal(loud.floorDb, FLOOR_MAX_DB);

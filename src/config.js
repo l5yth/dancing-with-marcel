@@ -62,16 +62,28 @@ const PARAMS = {
   /** How far back tonality and bass are read, in milliseconds. */
   timbreWindowMs: { default: 1500, min: 100, max: 10000 },
   /**
-   * How fast the room floor climbs back towards a louder room, in dB per second.
-   * Slow, because being sure of a song takes about ten seconds and the floor
-   * must not have climbed to meet it by then: at 3 dB/s it had, and the song
-   * was sat out. Not slower, because a loud room the page opens on has to be
-   * learned before its odd confident second can start a dance: at 0.2 dB/s
-   * a rumbling room danced at 62 s. The pulse evidence, the median over
-   * `pulseEnter`, stops the climb, so a song is met only by the few seconds'
-   * worth before its evidence is in.
+   * How fast the room floor climbs back towards a louder room, in dB per
+   * second. Slow, because being sure of a song takes about ten seconds and the
+   * floor must not have climbed to meet it by then: at 3 dB/s it had, and the
+   * song was sat out. Not slower, because a loud room the page opens on has to
+   * be learned before its odd confident second can start a dance: at 0.2 dB/s
+   * a rumbling room danced at 62 s.
    */
   floorRiseDbPerSec: { default: 0.5, min: 0, max: 60 },
+  /**
+   * How far back the room level is read to find the floor, in milliseconds.
+   * Longer than a song, so that a song the gate never took, or a long intro
+   * with no beat, cannot outvote the room around it; short enough that a room
+   * which really is louder is learned within a few minutes.
+   */
+  floorWindowMs: { default: 180000, min: 10000, max: 900000 },
+  /**
+   * Which of the last few minutes the floor sits under, from 0 for the
+   * quietest second to 1 for the loudest. A fifth, so a room that is quiet
+   * most of the time is read at its quiet, and one loud second in five does
+   * not lift it.
+   */
+  floorPercentile: { default: 0.2, min: 0, max: 1 },
   /** Sustained music-like time needed to enter `music`, in milliseconds. */
   musicEnterMs: { default: 3000, min: 0, max: 60000 },
   /** Sustained break-like time needed to leave `music`, in milliseconds. */

@@ -32,6 +32,8 @@ describe('config', () => {
       minLevelSwingDb: 0.1,
       timbreWindowMs: 1500,
       floorRiseDbPerSec: 0.5,
+      floorWindowMs: 180000,
+      floorPercentile: 0.2,
       musicEnterMs: 3000,
       breakHoldMs: 2000,
       levelWindowMs: 400,

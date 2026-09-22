@@ -54,6 +54,10 @@ interface Config {
   timbreWindowMs: number;
   /** How fast the room floor climbs back towards a louder room, in dB per second. */
   floorRiseDbPerSec: number;
+  /** How far back the room level is read to find the floor, in milliseconds. */
+  floorWindowMs: number;
+  /** Which of the last few minutes the floor sits under, 0 quietest to 1 loudest. */
+  floorPercentile: number;
   /** Sustained music-like time needed to enter `music`, in milliseconds. */
   musicEnterMs: number;
   /** Sustained break-like time needed to leave `music`, in milliseconds. */

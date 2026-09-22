@@ -201,6 +201,46 @@ describe('the gate, against a real room', () => {
     assert.equal(over, 0, `at the bar the floor climbed ${over.toFixed(1)} dB in 20 s`);
   });
 
+  it('C21: a long on-ramp does not raise the floor into the song behind it', () => {
+    // The owner's radio, 2026-09-22: a song whose intro is a minute and a half
+    // of held sound with no beat, then the band comes in at much the same
+    // level. The floor chased the on-ramp to its own level, the bar went with
+    // it, and the song never cleared it: the overlay read `swing 0.00`,
+    // `flatness 1.00`, `bass 0.00`, which is an empty window, not a quiet
+    // song. Noise stands in for the on-ramp: to a level meter a held chord is
+    // a sound with no dips and no beat.
+    const quietS = 20;
+    const rampS = 90;
+    const { events } = run(
+      concat(
+        scaleToDb(room(quietS, RATE), -50),
+        scaleToDb(room(rampS, RATE), -20),
+        scaleToDb(band(150, 60, RATE), -22),
+      ),
+    );
+    const songAt = quietS + rampS;
+    const atQuiet = /** @type {PipelineEvent} */ (events.find((event) => event.time >= quietS - 1));
+    const atSong = /** @type {PipelineEvent} */ (events.find((event) => event.time >= songAt));
+    assert.ok(
+      atSong.floorDb <= atQuiet.floorDb + 6,
+      `the on-ramp lifted the floor from ${atQuiet.floorDb.toFixed(1)} to ${atSong.floorDb.toFixed(1)}`,
+    );
+    const heard = events.find(
+      (event, index) =>
+        index > 0 &&
+        event.time >= songAt &&
+        event.state === 'music' &&
+        events[index - 1].state !== 'music',
+    );
+    assert.ok(
+      heard !== undefined && heard.time - songAt <= 20,
+      'the song behind the on-ramp was never heard',
+    );
+    const inSong = events.filter((event) => event.time >= songAt + 20);
+    const music = inSong.filter((event) => event.state === 'music').length / inSong.length;
+    assert.ok(music >= 0.75, `music for ${(100 * music).toFixed(0)}% of the song after 20 s`);
+  });
+
   it('C21: a fan with a wobble is still learned as the room', () => {
     // It moves, and its wobble scores a pulse median between pulseLeave and
     // pulseEnter, so nothing holds the floor for it: within a minute it is
