@@ -5,24 +5,19 @@ SPDX-License-Identifier: Apache-2.0
 
 # dancing with marcel
 
-Audio-input guided dancing ASCII punk for Veit's birthday.
+Audio-input guided dancing ASCII punks for Veit's birthday.
 
-Three punks, Billy, Mo and Spike, dance while music plays, faster for faster
+Some punks, Billy, Mo and Spike, dance while music plays, faster for faster
 music and harder for louder music. Between songs they smoke, drink a beer,
 play the N64, watch TV, sit on the amp, spray their hair, or lace their boots.
-One of them may walk off or fall asleep, and a cat may cross the floor.
+If the music sucks, they may walk off or fall asleep.
 
 ## Run
 
 1. `python3 -m http.server 8080`
 2. Open `http://localhost:8080/`
 3. Click start, allow the microphone
-
-The stage fits the window at any size. White on black, plus five accent
-colours.
-
-They start dancing 12 to 18 seconds into a song and stop 2 seconds after it
-ends, or about 25 seconds after if talking follows with no silence.
+4. Observe the punks
 
 ## Set the microphone level
 
@@ -50,6 +45,12 @@ the local server above.
 
 ## Tune
 
+Press `d` to show or hide the debug overlay at any time.
+
+Press `0` to force a break, or `1`, `2` or `3` to force a dance tier, for 30
+seconds. Each press restarts the 30 seconds. Detection keeps running and takes
+over again when they run out.
+
 Add parameters to the URL:
 
 - `?debug=1` shows the live values and a link to the repository
@@ -63,6 +64,7 @@ Add parameters to the URL:
 - `?levelWindowMs=400&timbreWindowMs=1500` set how far back level and timbre
   are read
 - `?floorRiseDbPerSec=0.5` sets how fast the room level is relearned
+- `?floorWindowMs=180000&floorPercentile=0.2` set how far back the room level is read, and how quiet the floor sits in it
 - `?bpmMin=95&bpmMax=190` sets the tempo range
 - `?tempoMinConfidence=0.15` sets how sure a tempo must be to be shown
 - `?defaultBpm=140&bpmSettleMs=3000` set the dance tempo before one is
@@ -72,24 +74,6 @@ Add parameters to the URL:
 - `?breakRefreshMinMs=60000&breakRefreshMaxMs=300000` set how long a break goes on before the scenes change
 
 With `?debug=1` each value is shown next to the threshold it must clear.
-Press `d` to show or hide it at any time.
-
-Press `0` to force a break, or `1`, `2` or `3` to force a dance tier, for 30
-seconds. Each press restarts the 30 seconds. Detection keeps running and takes
-over again when they run out.
-
-## Check audio files
-
-Needs `ffmpeg`.
-
-```
-npm run eval -- song.mp3 other.mp3 --gap 6
-```
-
-- `--gap <seconds>` inserts silence between files
-- `--<parameter> <value>` overrides any parameter from Tune
-- Output: one line per state change, a `file-summary:` line per file, and a
-  final `summary:` line
 
 ## Develop
 
@@ -101,4 +85,3 @@ npm run eval -- song.mp3 other.mp3 --gap 6
 
 - `src/sprites/asciipunk.js` holds the sprites, their colour masks, and the loops
 - The art is approved and pinned: `test/sprites.test.js` fails when a frame changes
-- After an approved change, set `APPROVED` in that test to the digest the failing test prints
