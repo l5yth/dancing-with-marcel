@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { boot } from '../src/app.js';
 import { BREAK_LOOPS, dancesOf, STAGE } from '../src/classify/show.js';
 import { DEFAULTS } from '../src/config.js';
+import { LOOP_ENERGY } from '../src/sprites/asciipunk.js';
 import {
   createAudioStack,
   createFakeDocument,
@@ -103,6 +104,33 @@ function countTicks(show) {
     tick(ms);
   };
   return counter;
+}
+
+/**
+ * A key going down, as the app reads one.
+ *
+ * @param {Partial<KeyPress>} fields What to override; the key is `d` unless said.
+ * @returns {KeyPress} The key press.
+ */
+function press(fields) {
+  return {
+    key: 'd',
+    repeat: false,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    ...fields,
+  };
+}
+
+/**
+ * The overlay's first line.
+ *
+ * @param {any} document The fake page.
+ * @returns {string} The line.
+ */
+function firstLine(document) {
+  return document.elements.overlay.textContent.split('\n')[0];
 }
 
 /**
@@ -384,20 +412,6 @@ describe('app', () => {
   });
 
   it('C16: d shows and hides the debug text, wherever the page started', async () => {
-    /**
-     * A key going down, as the app reads one.
-     *
-     * @param {Partial<KeyPress>} fields What to override.
-     * @returns {KeyPress} The key press.
-     */
-    const press = (fields) => ({
-      key: 'd',
-      repeat: false,
-      ctrlKey: false,
-      metaKey: false,
-      altKey: false,
-      ...fields,
-    });
     for (const [search, opensShown] of /** @type {[string, boolean][]} */ ([
       ['', false],
       ['?debug=1', true],
@@ -449,6 +463,205 @@ describe('app', () => {
       push(stack, drums(120, 1, RATE));
       assert.equal(overlay.textContent, 'stale');
     }
+  });
+
+  it('C23: with no microphone, 2 makes them dance a tier-2 loop at once, at defaultBpm', () => {
+    const { document, window, env } = setup();
+    const { show } = boot(env);
+    const lastMs = walkOn(window, show);
+    const before = pictureOf(document.elements.stage);
+    assert.deepEqual([show.dancing, show.tier], [false, 0]);
+
+    window.listeners.keydown(press({ key: '2' }));
+    assert.deepEqual(
+      [show.dancing, show.tier],
+      [true, 2],
+      'not heard the moment the key went down',
+    );
+    for (const punk of show.punks) {
+      assert.ok(dancesOf(2).includes(punk.loop), `${punk.id} does ${punk.loop}`);
+      assert.equal(punk.index, 0, `${punk.id} did not open on its first frame`);
+    }
+
+    // The next frame draws without ticking, and the ticks then come every
+    // eighth note at the default 140 bpm: 28 in six seconds, where the
+    // between-song pace would give 6.
+    const counter = countTicks(show);
+    window.runFrame(lastMs + 1);
+    assert.equal(counter.ticks, 0, 'ticked before the first frame was drawn');
+    assert.notEqual(pictureOf(document.elements.stage), before, 'the dance was not drawn');
+    for (let elapsedMs = lastMs + 6; elapsedMs <= lastMs + 6001; elapsedMs += 5) {
+      window.runFrame(elapsedMs);
+    }
+    assert.ok(Math.abs(counter.ticks - 28) <= 1, `${counter.ticks} ticks in 6 s`);
+  });
+
+  it('C23: 0 while music plays is a break, the moment the key is handled', async () => {
+    const { stack, document, window, env } = setup();
+    const { director, show } = boot(env);
+    await click(document);
+    walkOn(window, show);
+    push(stack, drums(120, WARM_S, RATE));
+    assert.equal(show.dancing, true, 'the drums were not heard');
+    assert.ok(director.tier >= 1);
+
+    window.listeners.keydown(press({ key: '0' }));
+    assert.deepEqual([show.dancing, show.tier], [false, 0]);
+    for (const punk of show.punks) {
+      if (punk.state === 'stage') {
+        assert.equal(
+          LOOP_ENERGY[punk.loop] ?? 0,
+          0,
+          `${punk.id} does ${punk.loop} in a forced break`,
+        );
+      }
+    }
+    // The director still has its own opinion underneath.
+    assert.ok(director.tier >= 1, 'the director was told about the forced break');
+    assert.match(document.elements.label.textContent, /^music/, "the label is not the detector's");
+  });
+
+  it('C23: a plain key only, and d still works while a tier is forced', () => {
+    const { document, window, env } = setup();
+    const { show } = boot(env);
+    walkOn(window, show);
+    for (const other of [
+      press({ key: '2', ctrlKey: true }),
+      press({ key: '2', metaKey: true }),
+      press({ key: '2', altKey: true }),
+      press({ key: '2', repeat: true }),
+      press({ key: '4' }),
+      press({ key: 'Digit2' }),
+    ]) {
+      window.listeners.keydown(other);
+      assert.deepEqual([show.dancing, show.tier], [false, 0], JSON.stringify(other));
+    }
+    window.listeners.keydown(press({ key: '3' }));
+    assert.deepEqual([show.dancing, show.tier], [true, 3]);
+    assert.equal(document.elements.overlay.hidden, true);
+    window.listeners.keydown(press({}));
+    assert.equal(document.elements.overlay.hidden, false, 'd stopped working');
+    assert.deepEqual([show.dancing, show.tier], [true, 3], 'd changed the tier');
+    window.listeners.keydown(press({}));
+    assert.equal(document.elements.overlay.hidden, true);
+  });
+
+  it('C23: forcing the tier they are in changes nothing on stage, and restarts the clock', () => {
+    const { window, env } = setup();
+    const { show } = boot(env);
+    walkOn(window, show);
+    window.runFrame(100000);
+    window.listeners.keydown(press({ key: '1' }));
+    const dancing = show.punks.map((punk) => [punk.loop, punk.index]);
+    window.runFrame(115000);
+    window.listeners.keydown(press({ key: '1' }));
+    assert.deepEqual(
+      show.punks.map((punk) => [punk.loop, punk.index]),
+      dancing,
+      'the same tier again started a new dance',
+    );
+    window.runFrame(130000);
+    assert.deepEqual([show.dancing, show.tier], [true, 1], 'the first deadline was kept');
+    window.runFrame(144999);
+    assert.deepEqual([show.dancing, show.tier], [true, 1]);
+    window.runFrame(145000);
+    assert.deepEqual([show.dancing, show.tier], [false, 0]);
+  });
+
+  it('C23: expiry on the animation clock, whoever it moves opening on its first frame', () => {
+    const { document, window, env } = setup();
+    const { show } = boot(env);
+    walkOn(window, show);
+    window.runFrame(1000);
+    window.listeners.keydown(press({ key: '3' }));
+    assert.deepEqual([show.dancing, show.tier], [true, 3]);
+    window.runFrame(30999);
+    assert.deepEqual([show.dancing, show.tier], [true, 3], 'gone a millisecond early');
+
+    const counter = countTicks(show);
+    const before = pictureOf(document.elements.stage);
+    window.runFrame(31000);
+    assert.deepEqual([show.dancing, show.tier], [false, 0], 'still forced at the deadline');
+    assert.equal(counter.ticks, 0, 'ticked on the frame it fell back, instead of drawing');
+    assert.notEqual(pictureOf(document.elements.stage), before, 'the scenes were not drawn');
+    for (const punk of show.punks) {
+      if (punk.state === 'stage') {
+        assert.equal(punk.index, 0, `${punk.id} did not open on its first frame`);
+      }
+    }
+
+    // A tab that comes back from the background after the deadline: the
+    // override ends on that first frame, however late it is.
+    window.runFrame(40000);
+    window.listeners.keydown(press({ key: '2' }));
+    assert.deepEqual([show.dancing, show.tier], [true, 2]);
+    window.runFrame(200000);
+    assert.deepEqual([show.dancing, show.tier], [false, 0]);
+  });
+
+  it('C23: underneath, events still count: the label, the tempo, and the tier at expiry', async () => {
+    const { stack, document, window, env } = setup();
+    const { director, show } = boot(env);
+    await click(document);
+    const lastMs = walkOn(window, show);
+    window.listeners.keydown(press({ key: '1' }));
+    assert.deepEqual([show.dancing, show.tier], [true, 1]);
+
+    push(stack, drums(120, WARM_S, RATE));
+    assert.match(
+      document.elements.label.textContent,
+      /^music \(\d+ bpm\)$/,
+      'the label went quiet',
+    );
+    assert.ok(director.tier >= 1, 'the director did not hear the drums');
+    assert.deepEqual([show.dancing, show.tier], [true, 1], 'the drums overrode the key');
+
+    // The dance follows the tempo heard, 120, not the default 140: 24 ticks
+    // in six seconds, where 140 would give 28.
+    const counter = countTicks(show);
+    window.runFrame(lastMs + 1);
+    for (let elapsedMs = lastMs + 6; elapsedMs <= lastMs + 6001; elapsedMs += 5) {
+      window.runFrame(elapsedMs);
+    }
+    assert.ok(Math.abs(counter.ticks - 24) <= 1, `${counter.ticks} ticks in 6 s`);
+
+    // Thirty seconds after the press, the director's own tier is what they hear.
+    window.runFrame(lastMs + 30000);
+    assert.equal(show.dancing, true);
+    assert.equal(show.tier, director.tier, 'the show did not fall back to the director');
+  });
+
+  it('C23: the overlay says forced and the seconds left, and the label never does', async () => {
+    const { stack, document, window, env } = setup({ search: '?debug=1' });
+    boot(env);
+    await click(document);
+    push(stack, drums(120, 3, RATE));
+    assert.match(firstLine(document), /^state\s+break\s+tier 0$/);
+
+    window.runFrame(1000);
+    window.listeners.keydown(press({ key: '2' }));
+    assert.equal(firstLine(document), 'state    break   tier 2 (forced, 30 s left)');
+    assert.equal(document.elements.label.textContent, 'break');
+
+    // The countdown moves with the audio events that refresh the overlay.
+    window.runFrame(12500);
+    push(stack, drums(120, 0.2, RATE));
+    assert.equal(firstLine(document), 'state    break   tier 2 (forced, 19 s left)');
+    window.runFrame(30999);
+    push(stack, drums(120, 0.2, RATE));
+    assert.equal(firstLine(document), 'state    break   tier 2 (forced, 1 s left)');
+    // Hidden and shown again, it still says so.
+    window.listeners.keydown(press({}));
+    window.listeners.keydown(press({}));
+    assert.equal(firstLine(document), 'state    break   tier 2 (forced, 1 s left)');
+    window.runFrame(31000);
+    push(stack, drums(120, 0.2, RATE));
+    assert.match(
+      firstLine(document),
+      /^state\s+break\s+tier 0$/,
+      'still forced after the deadline',
+    );
+    assert.equal(document.elements.label.textContent, 'break');
   });
 
   it('unit: ?debug=1 also shows the repository link', () => {

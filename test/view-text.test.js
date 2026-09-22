@@ -62,6 +62,46 @@ describe('view text', () => {
     assert.equal(lines.length, 8);
   });
 
+  it('C23: the overlay says when a tier is forced, and for how many whole seconds', () => {
+    /** @type {PipelineEvent} */
+    const event = {
+      time: 40,
+      levelDb: -20,
+      floorDb: -60,
+      flatness: 0.3,
+      bass: 0.6,
+      swing: 2,
+      pulse: 0.3,
+      state: 'music',
+      bpm: 160,
+      confidence: 0.5,
+      danceBpm: 160,
+      locked: true,
+    };
+    const line = (/** @type {Forced | null} */ forced) =>
+      overlayText(
+        event,
+        DEFAULTS,
+        forced?.tier ?? 3,
+        'billy idle, mo sway, spike sneer',
+        forced,
+      ).split('\n')[0];
+    assert.equal(line(null), 'state    music   tier 3');
+    assert.equal(line({ tier: 1, leftMs: 30000 }), 'state    music   tier 1 (forced, 30 s left)');
+    assert.equal(line({ tier: 1, leftMs: 28001 }), 'state    music   tier 1 (forced, 29 s left)');
+    assert.equal(line({ tier: 0, leftMs: 1 }), 'state    music   tier 0 (forced, 1 s left)');
+    assert.equal(line({ tier: 2, leftMs: 999 }), 'state    music   tier 2 (forced, 1 s left)');
+    // Never 0 while it holds, and the other lines are as they were.
+    assert.doesNotMatch(line({ tier: 2, leftMs: 1 }), /0 s left/);
+    assert.equal(
+      overlayText(event, DEFAULTS, 1, 'cast', { tier: 1, leftMs: 5000 })
+        .split('\n')
+        .slice(1)
+        .join('\n'),
+      overlayText(event, DEFAULTS, 1, 'cast').split('\n').slice(1).join('\n'),
+    );
+  });
+
   it('unit: the overlay says when no tempo has been found and the dance speed is a guess', () => {
     /** @type {PipelineEvent} */
     const event = {

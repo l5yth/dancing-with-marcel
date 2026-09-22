@@ -52,12 +52,17 @@ export function statusText(status, detail = '') {
  * @param {Readonly<Config>} config Active configuration.
  * @param {number} tier Energy tier the punks dance to; 0 between songs.
  * @param {string} cast Who is doing what on the stage.
+ * @param {Forced | null} [forced] The tier forced from the keyboard, while
+ *   one holds (SPEC T4).
  * @returns {string} One line per measurement.
  */
-export function overlayText(event, config, tier, cast) {
+export function overlayText(event, config, tier, cast, forced = null) {
   const bpm = event.bpm === null ? 'none' : `${Math.round(event.bpm)}`;
+  // Whole seconds, rounded up: it reads 30 at the press and 1 on its last
+  // second, and never 0 while it still holds.
+  const hold = forced === null ? '' : ` (forced, ${Math.ceil(forced.leftMs / 1000)} s left)`;
   return [
-    `state    ${event.state}   tier ${tier}`,
+    `state    ${event.state}   tier ${tier}${hold}`,
     `level    ${event.levelDb.toFixed(1)} dB   floor ${event.floorDb.toFixed(1)} dB   need ${(event.floorDb + config.musicOverFloorDb).toFixed(1)} dB`,
     `swing    ${event.swing.toFixed(2)} dB   need at least ${config.minLevelSwingDb}`,
     `pulse    ${event.pulse.toFixed(3)}   need ${config.pulseEnter} to start, ${config.pulseLeave} to stay`,

@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { STAGE } from '../src/classify/show.js';
+import { dancesOf, STAGE } from '../src/classify/show.js';
 import { PALETTE } from '../src/sprites/asciipunk.js';
 import { click, findBrowser, openPage, until } from './helpers/browser.js';
 import { concat, drums, room } from './helpers/synth.js';
@@ -287,6 +287,50 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
     await press();
     assert.deepEqual(await shown(), [false, false], 'd did not hide it again');
     assert.deepEqual(session.logs, []);
+  });
+
+  it('C23: a real 2 key press forces a tier-2 dance, and the overlay says so', async () => {
+    const session = await page({ query: '?debug=1&breakFrameMs=100' });
+    await click(session, 'start');
+    // Capture running, the overlay written, and everybody on stage: whoever
+    // is still walking on when the key goes down would dance on arrival, which
+    // is right, but not what this test is here to see. The fixture opens with
+    // room noise, so the state is still break when the key goes down.
+    const written = await until(
+      async () =>
+        /^state\s+break\s+tier 0\n[\s\S]*^punks\s+billy (?!walk)\w+, mo (?!walk)\w+, spike (?!walk)\w+$/m.test(
+          String(await session.evaluate(`document.getElementById('overlay').textContent`)),
+        ),
+      15000,
+    );
+    assert.ok(written, 'the overlay never showed a state with everybody on stage');
+    for (const type of ['keyDown', 'keyUp']) {
+      await session.send('Input.dispatchKeyEvent', {
+        type,
+        key: '2',
+        code: 'Digit2',
+        text: type === 'keyDown' ? '2' : undefined,
+        windowsVirtualKeyCode: 50,
+      });
+    }
+    const forced = await until(
+      async () =>
+        /^state\s+break\s+tier 2 \(forced, (30|29|28) s left\)$/m.test(
+          String(await session.evaluate(`document.getElementById('overlay').textContent`)),
+        ),
+      3000,
+    );
+    assert.ok(forced, 'the overlay never said the tier was forced');
+    const overlay = String(
+      await session.evaluate(`document.getElementById('overlay').textContent`),
+    );
+    const cast = /^punks\s+(.+)$/m.exec(overlay);
+    assert.ok(cast !== null, overlay);
+    for (const doing of cast[1].split(', ')) {
+      const [, loop] = doing.split(' ');
+      assert.ok(dancesOf(2).includes(loop), `${doing} is not a tier-2 dance`);
+    }
+    assert.deepEqual(session.logs, [], 'the console stayed quiet');
   });
 
   it('C18: the debug text is one block in the corner, on its own ground', async () => {

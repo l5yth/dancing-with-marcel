@@ -469,3 +469,19 @@ interface Run {
   /** The letter of `PALETTE` it is drawn in, or the empty string for white. */
   ink: string;
 }
+
+/** What the show hears: whether music plays, and at which energy tier. */
+interface Heard {
+  /** Whether music is playing. */
+  dancing: boolean;
+  /** Energy tier, 1 to 3 while music plays; 0 between songs. */
+  tier: number;
+}
+
+/** A tier forced from the keyboard, while it still holds (SPEC T2). */
+interface Forced {
+  /** The tier: 0 a break, 1 to 3 a dance tier. */
+  tier: number;
+  /** Milliseconds until it runs out. */
+  leftMs: number;
+}

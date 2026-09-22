@@ -74,6 +74,10 @@ Add parameters to the URL:
 With `?debug=1` each value is shown next to the threshold it must clear.
 Press `d` to show or hide it at any time.
 
+Press `0` to force a break, or `1`, `2` or `3` to force a dance tier, for 30
+seconds. Each press restarts the 30 seconds. Detection keeps running and takes
+over again when they run out.
+
 ## Check audio files
 
 Needs `ffmpeg`.

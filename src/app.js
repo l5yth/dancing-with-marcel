@@ -24,10 +24,13 @@
  *
  * The debug text is shown by `?debug=1` and shown or hidden at any time by
  * pressing `d`, so the projector can be checked without reloading the page.
+ * The keys `0` to `3` force a break or a dance tier for thirty seconds (SPEC
+ * T1 to T5); the detector and the director keep running underneath.
  */
 
 import { Capture } from './audio/capture.js';
 import { debugLabel } from './classify/label.js';
+import { Override } from './classify/override.js';
 import { Pipeline } from './classify/pipeline.js';
 import { SceneDirector } from './classify/scene.js';
 import { Show } from './classify/show.js';
@@ -82,23 +85,59 @@ export function boot(env) {
     refreshMinMs: config.breakRefreshMinMs,
     refreshMaxMs: config.breakRefreshMaxMs,
   });
+  const override = new Override();
   /** @type {Pipeline | null} */
   let pipeline = null;
   /** @type {PipelineEvent | null} */
   let last = null;
   let overlayMs = 0;
   let danceBpm = config.defaultBpm;
+  // The animation clock as of the last frame. It paces the show, and a tier
+  // forced from the keyboard runs out on it: keys work before the microphone
+  // is allowed, when there is no audio time to count by.
+  let frameMs = 0;
   // When the next tick is due, in milliseconds since the page started.
   let dueMs = 0;
   // Whether the show has something new to draw before a tick moves it on.
   let fresh = true;
 
+  /**
+   * What the show hears at a moment: a tier forced from the keyboard while
+   * one holds, otherwise what the detector and the director say.
+   *
+   * @param {number} nowMs The moment, on the animation clock.
+   * @returns {Heard} Whether music plays, and the tier.
+   */
+  const heard = (nowMs) =>
+    override.hearing(nowMs, { dancing: last?.state === 'music', tier: director.tier });
+  /**
+   * Let the show hear what applies now. Whoever is given something new to do
+   * is drawn before the next tick moves it on.
+   *
+   * @param {number} nowMs The moment, on the animation clock.
+   * @returns {void}
+   */
+  const apply = (nowMs) => {
+    const { dancing, tier } = heard(nowMs);
+    fresh = show.hear(dancing, tier) || fresh;
+  };
+  /**
+   * Write the debug overlay from what was last heard. The tier shown is the
+   * one the show hears, forced or not, and a forced one says how long it has.
+   *
+   * @param {PipelineEvent} event What was last heard.
+   * @returns {void}
+   */
+  const overlayNow = (event) => {
+    const forced = override.at(frameMs);
+    overlay.textContent = overlayText(event, config, heard(frameMs).tier, show.caption(), forced);
+  };
   // Show or hide the debug text, with what was last heard if anything was.
   const showDebug = () => {
     overlay.hidden = !debug;
     repo.hidden = !debug;
     if (debug && last !== null) {
-      overlay.textContent = overlayText(last, config, director.tier, show.caption());
+      overlayNow(last);
     }
   };
   const fit = () => stage.fit(window.innerWidth, window.innerHeight);
@@ -106,6 +145,10 @@ export function boot(env) {
   // tempo. Between songs there is no beat to follow, and the pace is unhurried.
   const tickMs = () => (show.dancing ? 60000 / danceBpm / FRAMES_PER_BEAT : config.breakFrameMs);
   const paint = (/** @type {number} */ elapsedMs) => {
+    frameMs = elapsedMs;
+    // A forced tier runs out on the frame it is due, audio or no audio, and
+    // what replaces it is drawn on that same frame.
+    apply(elapsedMs);
     if (fresh) {
       // Whoever was given something new to do opens on its first frame and
       // holds it a whole tick: ticking first would open every dance on its
@@ -139,13 +182,16 @@ export function boot(env) {
       for (const event of pipeline.push(frame)) {
         last = event;
         danceBpm = event.danceBpm;
-        fresh = show.hear(event.state === 'music', director.update(event)) || fresh;
+        // The director hears every event, forced tier or not, so that when the
+        // thirty seconds are up it has an opinion of its own.
+        director.update(event);
+        apply(frameMs);
         label.textContent = debugLabel(event.state, event.locked ? event.danceBpm : null);
       }
       overlayMs += (frame.length / sampleRate) * 1000;
       if (debug && last !== null && overlayMs >= OVERLAY_INTERVAL_MS) {
         overlayMs = 0;
-        overlay.textContent = overlayText(last, config, director.tier, show.caption());
+        overlayNow(last);
       }
     },
     /**
@@ -167,13 +213,24 @@ export function boot(env) {
   });
   start.addEventListener('click', () => capture.start());
   window.addEventListener('resize', fit);
-  // `d` alone: with a modifier it is the browser's own, a bookmark or a
-  // duplicate tab, and a key held down would make the text flicker.
+  // A plain key only: with a modifier it is the browser's own, a bookmark or
+  // a duplicate tab, and a key held down would make the text flicker or keep
+  // restarting the thirty seconds.
   window.addEventListener('keydown', (event) => {
     const plain = !event.ctrlKey && !event.metaKey && !event.altKey && !event.repeat;
-    if (plain && event.key.toLowerCase() === 'd') {
+    if (!plain) {
+      return;
+    }
+    if (event.key.toLowerCase() === 'd') {
       debug = !debug;
       showDebug();
+    } else if (override.press(event.key, frameMs)) {
+      // At once, ahead of the next event and the next frame, and the overlay
+      // says so at once too.
+      apply(frameMs);
+      if (debug && last !== null) {
+        overlayNow(last);
+      }
     }
   });
   showDebug();
