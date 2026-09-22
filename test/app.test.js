@@ -30,7 +30,7 @@ import {
   namedError,
   pictureOf,
 } from './helpers/fakes.js';
-import { drums, silence } from './helpers/synth.js';
+import { drums, scaleToDb, silence } from './helpers/synth.js';
 
 /**
  * Build the app on fakes.
@@ -509,11 +509,8 @@ describe('app', () => {
     assert.deepEqual([show.dancing, show.tier], [false, 0]);
     for (const punk of show.punks) {
       if (punk.state === 'stage') {
-        assert.equal(
-          LOOP_ENERGY[punk.loop] ?? 0,
-          0,
-          `${punk.id} does ${punk.loop} in a forced break`,
-        );
+        const scene = punk.loop === 'sleep' || LOOP_ENERGY[punk.loop] === 0;
+        assert.ok(scene, `${punk.id} does ${punk.loop} in a forced break`);
       }
     }
     // The director still has its own opinion underneath.
@@ -629,6 +626,14 @@ describe('app', () => {
     window.runFrame(lastMs + 30000);
     assert.equal(show.dancing, true);
     assert.equal(show.tier, director.tier, 'the show did not fall back to the director');
+
+    // Its settled tier, not the one the room is asking for: a second of
+    // quieter drums asks for less, and the settle has not followed it yet.
+    push(stack, scaleToDb(drums(120, 1, RATE), -36));
+    window.runFrame(lastMs + 30500);
+    assert.ok(director.asked < director.tier, `asked ${director.asked}, settled ${director.tier}`);
+    assert.equal(show.tier, director.tier, 'the show followed the room before the director did');
+    assert.notEqual(show.tier, director.asked);
   });
 
   it('C23: the overlay says forced and the seconds left, and the label never does', async () => {
@@ -662,6 +667,15 @@ describe('app', () => {
       'still forced after the deadline',
     );
     assert.equal(document.elements.label.textContent, 'break');
+
+    // Hidden, nothing is written to it, by a key any more than by an event.
+    const plain = setup();
+    const booted = boot(plain.env);
+    await click(plain.document);
+    push(plain.stack, drums(120, 3, RATE));
+    plain.window.listeners.keydown(press({ key: '2' }));
+    assert.deepEqual([booted.show.dancing, booted.show.tier], [true, 2]);
+    assert.equal(plain.document.elements.overlay.textContent, '');
   });
 
   it('unit: ?debug=1 also shows the repository link', () => {
