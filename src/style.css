@@ -27,13 +27,14 @@ body {
   overflow: hidden;
   background: var(--bg);
   color: var(--fg);
-  /* Nothing on a projector wants a mouse pointer parked on it all evening.
-     The panel takes it back, since the start button has to be hit. */
-  cursor: none;
 }
 
-#panel {
-  cursor: auto;
+/* Nothing on a projector wants a mouse pointer parked on it all evening. It
+   goes only once the button has been hit and the debug text is off: before
+   that it has to be aimed at the button, and while tuning it has to be aimed
+   at all. The script sets the class; `d` takes it off and puts it back. */
+body.bare {
+  cursor: none;
 }
 
 body {

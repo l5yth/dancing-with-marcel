@@ -53,7 +53,8 @@ over again when they run out.
 
 Press `r` to forget the room level and start listening again. The microphone
 keeps running and the URL settings are kept. They stop dancing for 15 to 18
-seconds, and a forced tier is kept.
+seconds, and a forced tier is kept. Use it after a song that was not
+recognised, not during one.
 
 ## A song is playing and they are not dancing
 

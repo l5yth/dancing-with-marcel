@@ -333,6 +333,31 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
     assert.deepEqual(session.logs, [], 'the console stayed quiet');
   });
 
+  it('C16: the pointer goes once the page is running with nothing to read', async () => {
+    const session = await page();
+    const cursor = () => session.evaluate(`getComputedStyle(document.body).cursor`).then(String);
+    assert.notEqual(await cursor(), 'none', 'the start button cannot be aimed at');
+    await click(session, 'start');
+    const gone = await until(async () => (await cursor()) === 'none', 5000);
+    assert.ok(gone, 'the pointer stayed on the projector');
+    const press = async () => {
+      for (const type of ['keyDown', 'keyUp']) {
+        await session.send('Input.dispatchKeyEvent', {
+          type,
+          key: 'd',
+          code: 'KeyD',
+          text: type === 'keyDown' ? 'd' : undefined,
+          windowsVirtualKeyCode: 68,
+        });
+      }
+    };
+    await press();
+    assert.notEqual(await cursor(), 'none', 'there is a text to read and nothing to read it with');
+    await press();
+    assert.equal(await cursor(), 'none');
+    assert.deepEqual(session.logs, []);
+  });
+
   it('C16: a real r press forgets what it has heard', async () => {
     const session = await page({ query: '?debug=1&breakFrameMs=100' });
     await click(session, 'start');
@@ -370,16 +395,12 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
            return { family: style.fontFamily, size: style.fontSize, ground: style.backgroundColor };
          };
          return { overlay: read('overlay'), repo: read('repo'),
-                  cursor: { body: getComputedStyle(document.body).cursor,
-                            panel: getComputedStyle(document.getElementById('panel')).cursor,
-                            stage: getComputedStyle(document.getElementById('stage')).cursor } };
+                  cursor: getComputedStyle(document.body).cursor };
        })()`,
     );
-    // Nothing on a projector wants a mouse pointer parked on it all evening,
-    // and the start button still has to be hit.
-    assert.equal(look.cursor.body, 'none', 'the pointer is on the projector');
-    assert.equal(look.cursor.stage, 'none', 'the pointer is over the punks');
-    assert.notEqual(look.cursor.panel, 'none', 'the start button cannot be aimed at');
+    // This page never clicked start and is showing the text, so the pointer
+    // is still there to aim with.
+    assert.notEqual(look.cursor, 'none', 'the pointer went while there was a button to hit');
     // The repository link is debug information too, so it is set like the rest
     // of it rather than in the body font at whatever size a link inherits.
     assert.equal(look.repo.family, look.overlay.family, 'the link is in another font');

@@ -719,6 +719,37 @@ describe('app', () => {
     assert.equal(show.dancing, true, 'it never heard the drums again');
   });
 
+  it('C16: the pointer goes once the page is running with nothing to read', async () => {
+    // Before the button is hit it has to be aimed at the button; while the
+    // debug text is up it has to be aimed at all. Only the page the projector
+    // shows loses it.
+    const plain = setup();
+    boot(plain.env);
+    assert.equal(plain.document.body.className, '', 'the start button cannot be aimed at');
+    await click(plain.document);
+    assert.equal(plain.document.body.className, 'bare');
+    plain.window.listeners.keydown(press({}));
+    assert.equal(plain.document.body.className, '', 'd left the pointer hidden');
+    plain.window.listeners.keydown(press({}));
+    assert.equal(plain.document.body.className, 'bare');
+
+    // A page that opens in debug keeps it until the text is turned off.
+    const debug = setup({ search: '?debug=1' });
+    boot(debug.env);
+    assert.equal(debug.document.body.className, '');
+    await click(debug.document);
+    assert.equal(debug.document.body.className, '', 'there is a text to read');
+    debug.window.listeners.keydown(press({}));
+    assert.equal(debug.document.body.className, 'bare');
+
+    // And a page that never starts keeps it, whatever the microphone says.
+    const denied = setup();
+    denied.stack.control.rejectMedia = namedError('NotAllowedError', 'Permission denied');
+    boot(denied.env);
+    await click(denied.document);
+    assert.equal(denied.document.body.className, '');
+  });
+
   it('C16: r puts the dance tempo back to the default', async () => {
     // The app keeps its own `danceBpm` for the tick rate, and a fresh pipeline
     // does not reach it. Forced to a tier with no audio, they tick at whatever

@@ -94,6 +94,8 @@ export function boot(env) {
   let last = null;
   let overlayMs = 0;
   let danceBpm = config.defaultBpm;
+  // Whether the microphone has been allowed, which is also when the panel goes.
+  let running = false;
   // The animation clock as of the last frame. It paces the show, and a tier
   // forced from the keyboard runs out on it: keys work before the microphone
   // is allowed, when there is no audio time to count by.
@@ -135,7 +137,11 @@ export function boot(env) {
     overlay.textContent = overlayText(event, config, heard(frameMs).tier, show.caption(), forced);
   };
   // Show or hide the debug text, with what was last heard if anything was.
+  // The pointer follows it: it is hidden only on a page that is running and
+  // has nothing to read, which is the page the projector shows. The body
+  // carries no other class, so the name is set and cleared outright.
   const showDebug = () => {
+    document.body.className = running && !debug ? 'bare' : '';
     overlay.hidden = !debug;
     repo.hidden = !debug;
     if (debug && last !== null) {
@@ -225,10 +231,13 @@ export function boot(env) {
      * names the state in its first line anyway.
      */
     onStatus(status, detail) {
-      const running = status === 'running';
+      running = status === 'running';
       start.hidden = status === 'starting' || running;
       panel.hidden = running;
-      if (!running) {
+      showDebug();
+      // Asked of `status` and not of `running`, so that the type narrows: the
+      // message is for every status but that one.
+      if (status !== 'running') {
         label.textContent = statusText(status, detail);
       } else if (last === null) {
         label.textContent = 'break';

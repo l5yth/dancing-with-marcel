@@ -325,6 +325,7 @@ export function createFakeDocument({ missing = [], cell = { width: 60, height: 8
       // The app passes the page to the capture as its visibility source.
     },
     body: {
+      className: '',
       children: /** @type {any[]} */ ([]),
       appendChild(/** @type {any} */ node) {
         this.children.push(node);
