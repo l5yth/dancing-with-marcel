@@ -33,20 +33,20 @@ const PARAMS = {
   /**
    * Pulse evidence needed to start dancing: the median tempo confidence of the
    * last `pulseWindow` seconds. This is the question that decides. Measured on
-   * real recordings: a rumbling room and a voice have a median of 0.075 and
-   * never pass 0.10, and in three minutes of them no streak reaches this bar;
-   * a punk song through a phone speaker sits at 0.12 with streaks of six
-   * seconds over it; records played clean sit at 0.21 to 0.27. Lower it
-   * and he starts sooner and is fooled sooner.
+   * the owner's recordings: a rumbling room and a voice have a median of 0.07
+   * to 0.08 and never pass 0.11, and in three minutes of them no streak
+   * reaches this bar; a punk song through a phone speaker sits at 0.12 with
+   * streaks of five seconds over it; records played clean sit at 0.20 to
+   * 0.27. Lower it and the punks start sooner and are fooled sooner.
    */
   pulseEnter: { default: 0.15, min: 0, max: 1 },
-  /** Pulse evidence that keeps him dancing; under it for `pulseLeaveMs`, he stops. */
+  /** Pulse evidence that keeps them dancing; under it for `pulseLeaveMs`, they stop. */
   pulseLeave: { default: 0.09, min: 0, max: 1 },
   /**
-   * How long the pulse may stay under `pulseLeave` before he stops, in
+   * How long the pulse may stay under `pulseLeave` before they stop, in
    * milliseconds. Long, because the pulse of a real song dips for seconds at a
-   * time; it is also how long he dances on into talking that follows a song
-   * with no silence between them.
+   * time; it is also most of how long they dance on into talking that follows
+   * a song with no silence between them, which measures 23 to 24 s.
    */
   pulseLeaveMs: { default: 10000, min: 0, max: 120000 },
   /** How many one-second tempo confidences the pulse evidence is the median of. */
@@ -97,12 +97,12 @@ const PARAMS = {
   /**
    * Tempo confidence below which no tempo is shown, from 0 to 1. A drum machine
    * scores 0.97, a record about 0.2, and a record through a phone speaker in a
-   * room about 0.13, all three read correctly. Speech scores 0.14, so this does
-   * not tell music from noise and is not asked to: a tempo only settles inside
-   * a music span, which noise never opens.
+   * room about 0.13, all three read correctly. A voice reaches 0.19 for a
+   * moment, so this does not tell music from noise and is not asked to: a
+   * tempo only settles inside a music span, which noise never opens.
    */
   tempoMinConfidence: { default: 0.15, min: 0, max: 1 },
-  /** Tempo Marcel dances at before any has been detected, in beats per minute. */
+  /** Tempo the punks dance at before any has been detected, in beats per minute. */
   defaultBpm: { default: 140, min: 40, max: 400 },
   /** How long a new tempo must hold before the dance follows it, in milliseconds. */
   bpmSettleMs: { default: 3000, min: 0, max: 60000 },
@@ -174,6 +174,13 @@ export function configWith(overrides) {
   if (config.bpmMin >= config.bpmMax) {
     config.bpmMin = DEFAULTS.bpmMin;
     config.bpmMax = DEFAULTS.bpmMax;
+  }
+  // A leave bar over the enter bar would start a song and drop it `pulseLeaveMs`
+  // later, over and over, since the evidence that started it is under the bar
+  // that keeps it.
+  if (config.pulseLeave > config.pulseEnter) {
+    config.pulseLeave = DEFAULTS.pulseLeave;
+    config.pulseEnter = DEFAULTS.pulseEnter;
   }
   return Object.freeze(config);
 }

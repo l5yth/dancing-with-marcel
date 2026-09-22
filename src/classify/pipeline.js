@@ -75,7 +75,7 @@ export class Pipeline {
      */
     this.hopMs = (HOP / sampleRate) * 1000;
     /**
-     * Tempo Marcel dances at, in beats per minute.
+     * Tempo the punks dance at, in beats per minute.
      * @type {number}
      */
     this.danceBpm = Math.min(Math.max(config.defaultBpm, config.bpmMin), config.bpmMax);
@@ -126,6 +126,7 @@ export class Pipeline {
     return {
       time: frame.time,
       levelDb: this.gate.levelDb ?? frame.levelDb,
+      clipped: frame.clipped,
       floorDb: this.gate.floorDb,
       flatness: this.gate.flatness,
       bass: this.gate.bass,

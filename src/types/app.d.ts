@@ -44,9 +44,9 @@ interface Config {
   minLevelSwingDb: number;
   /** Pulse evidence needed to start dancing, from 0 to 1. */
   pulseEnter: number;
-  /** Pulse evidence that keeps him dancing, from 0 to 1. */
+  /** Pulse evidence that keeps them dancing, from 0 to 1. */
   pulseLeave: number;
-  /** How long the pulse may stay under `pulseLeave` before he stops, in milliseconds. */
+  /** How long the pulse may stay under `pulseLeave` before they stop, in milliseconds. */
   pulseLeaveMs: number;
   /** How many one-second tempo confidences the pulse evidence is the median of. */
   pulseWindow: number;
@@ -70,7 +70,7 @@ interface Config {
   bpmMax: number;
   /** Tempo confidence below which no tempo is shown, from 0 to 1. */
   tempoMinConfidence: number;
-  /** Tempo Marcel dances at before any has been detected, in beats per minute. */
+  /** Tempo the punks dance at before any has been detected, in beats per minute. */
   defaultBpm: number;
   /** How long a new tempo must hold before the dance follows it, in milliseconds. */
   bpmSettleMs: number;
@@ -121,6 +121,8 @@ interface AnalyzerFrame {
   time: number;
   /** Level of the hop in dBFS. */
   levelDb: number;
+  /** Share of the hop's samples that are pinned at full scale, from 0 to 1. */
+  clipped: number;
   /** Onset strength: the positive change of the log spectrum since the previous hop. */
   flux: number;
   /** How noise-like the hop is, from 0 for a pure tone to 1 for white noise. */
@@ -137,6 +139,8 @@ interface PipelineEvent {
   time: number;
   /** Loudest level of the level window, in dBFS. */
   levelDb: number;
+  /** Share of the hop's samples pinned at full scale, from 0 to 1. */
+  clipped: number;
   /** Learned level of the room, in dBFS. */
   floorDb: number;
   /** Flattest spectrum among the audible hops of the timbre window. */
@@ -153,7 +157,7 @@ interface PipelineEvent {
   bpm: number | null;
   /** Confidence of that tempo, from 0 to 1; 0 when there is none. */
   confidence: number;
-  /** Tempo Marcel dances at, in beats per minute. */
+  /** Tempo the punks dance at, in beats per minute. */
   danceBpm: number;
   /** Whether a confident tempo has ever been adopted. */
   locked: boolean;
@@ -171,7 +175,7 @@ interface Span {
   label: string;
 }
 
-/** What Marcel did over a stretch of audio. */
+/** What the page did over a stretch of audio. */
 interface Stats {
   /** Seconds the stretch covers. */
   duration: number;

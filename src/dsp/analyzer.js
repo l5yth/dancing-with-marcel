@@ -22,7 +22,7 @@
  * API, no wall clock (SPEC invariant 4).
  */
 
-import { rmsDb } from './level.js';
+import { clippedShare, rmsDb } from './level.js';
 import { SpectrumFeatures } from './spectrum.js';
 import { estimateTempo } from './tempo.js';
 
@@ -144,9 +144,11 @@ export class Analyzer {
       this.sinceTempo = 0;
       this.tempo = estimateTempo(this.envelope, this.envelopeRate, this.range);
     }
+    const hop = samples.subarray(WINDOW - HOP);
     return {
       time: this.total / this.sampleRate,
-      levelDb: rmsDb(samples.subarray(WINDOW - HOP)),
+      levelDb: rmsDb(hop),
+      clipped: clippedShare(hop),
       flux,
       flatness,
       bass,

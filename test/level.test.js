@@ -16,7 +16,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { rmsDb, SILENCE_DB } from '../src/dsp/level.js';
+import { clippedShare, rmsDb, SILENCE_DB } from '../src/dsp/level.js';
 
 describe('rmsDb', () => {
   it('unit: silence and an empty frame read as the silence floor', () => {
@@ -43,5 +43,15 @@ describe('rmsDb', () => {
 
   it('unit: the sign of the samples does not matter', () => {
     assert.equal(rmsDb(new Float32Array(64).fill(-0.25)), rmsDb(new Float32Array(64).fill(0.25)));
+  });
+
+  it('C20: the clipped share counts the samples that ran out of numbers', () => {
+    const of = (/** @type {number[]} */ samples) => clippedShare(Float32Array.from(samples));
+    assert.equal(of([]), 0, 'an empty frame is not clipping');
+    assert.equal(of([0, 0.5, -0.5, 0.9]), 0);
+    assert.equal(of([1, -1, 0, 0]), 0.5, 'both polarities count');
+    assert.equal(of([0.999, -0.999]), 1, 'at the ceiling is at the ceiling');
+    assert.equal(of([0.998, -0.998]), 0, 'and just under it is not');
+    assert.equal(of([2, -2]), 1, 'past full scale is past it');
   });
 });

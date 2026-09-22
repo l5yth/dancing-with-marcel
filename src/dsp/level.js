@@ -23,6 +23,34 @@
 export const SILENCE_DB = -120;
 
 /**
+ * How close to full scale a sample must sit to count as pinned there. Below
+ * this an analogue-to-digital converter is still resolving the waveform;
+ * at it, it has run out of numbers and the shape is gone.
+ */
+const CLIP_CEILING = 0.999;
+
+/**
+ * Share of a frame's samples pinned at full scale, which is what too much
+ * input gain does to a signal. Nothing downstream can undo it: the peaks the
+ * onsets are read from are flattened, and the level stops reporting the room.
+ * The owner's first song recording was 46% clipped and nothing on the page
+ * said so.
+ *
+ * @param {Float32Array} frame Mono samples, nominally in the range -1 to 1.
+ * @returns {number} From 0 for a frame that is nowhere near it to 1 for a
+ *   frame that is nothing else.
+ */
+export function clippedShare(frame) {
+  let pinned = 0;
+  for (const sample of frame) {
+    if (Math.abs(sample) >= CLIP_CEILING) {
+      pinned += 1;
+    }
+  }
+  return frame.length === 0 ? 0 : pinned / frame.length;
+}
+
+/**
  * Root-mean-square level of a frame in dBFS (1.0 is full scale, 0 dBFS).
  *
  * @param {Float32Array} frame Mono samples, nominally in the range -1 to 1.

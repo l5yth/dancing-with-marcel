@@ -45,6 +45,20 @@ export function statusText(status, detail = '') {
 }
 
 /**
+ * What to say about a hop that is pinned at full scale. Nothing, while nothing
+ * is: a warning that is always there is not a warning. Nothing downstream can
+ * undo clipping, so it is said beside the level and not left to be inferred
+ * from it; the owner's first song recording was 46% clipped and the page said
+ * nothing (SPEC D7).
+ *
+ * @param {number} clipped Share of the hop pinned at full scale, from 0 to 1.
+ * @returns {string} The warning, or the empty string.
+ */
+function clipping(clipped) {
+  return clipped === 0 ? '' : `   CLIPPING ${(100 * clipped).toFixed(0)}%, turn the gain down`;
+}
+
+/**
  * Text of the `?debug=1` overlay: what the classifier saw and what it needs
  * to see, so a threshold can be retuned in the room without guessing.
  *
@@ -63,7 +77,7 @@ export function overlayText(event, config, tier, cast, forced = null) {
   const hold = forced === null ? '' : ` (forced, ${Math.ceil(forced.leftMs / 1000)} s left)`;
   return [
     `state    ${event.state}   tier ${tier}${hold}`,
-    `level    ${event.levelDb.toFixed(1)} dB   floor ${event.floorDb.toFixed(1)} dB   need ${(event.floorDb + config.musicOverFloorDb).toFixed(1)} dB`,
+    `level    ${event.levelDb.toFixed(1)} dB   floor ${event.floorDb.toFixed(1)} dB   need ${(event.floorDb + config.musicOverFloorDb).toFixed(1)} dB${clipping(event.clipped)}`,
     `swing    ${event.swing.toFixed(2)} dB   need at least ${config.minLevelSwingDb}`,
     `pulse    ${event.pulse.toFixed(3)}   need ${config.pulseEnter} to start, ${config.pulseLeave} to stay`,
     `tempo    ${bpm} bpm at ${event.confidence.toFixed(2)}   need ${config.tempoMinConfidence}`,

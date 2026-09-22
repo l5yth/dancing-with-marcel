@@ -16,7 +16,7 @@
 
 /**
  * @file Offline evaluation (SPEC D8): decode audio files with ffmpeg, run them
- * through the same pipeline the page uses, and print what Marcel would have
+ * through the same pipeline the page uses, and print what the page would have
  * done. Tuning happens here, at home, instead of in the room. The analysis is
  * imported, never reimplemented, so a threshold tuned here means the same thing
  * live.
@@ -168,7 +168,7 @@ export function median(values) {
  *
  * @param {PipelineEvent[]} events Events in time order.
  * @param {number} duration Seconds the stretch covers.
- * @returns {Stats} What Marcel did over it.
+ * @returns {Stats} What the page did over it.
  */
 export function statsOf(events, duration) {
   const music = events.filter((event) => event.state === 'music').length;

@@ -15,8 +15,8 @@
 */
 
 /**
- * @file Music or break (SPEC D2, D7). The default is break: he dances only on
- * sustained evidence of a pulse, and three questions have to agree.
+ * @file Music or break (SPEC D2, D7). The default is break: the punks dance
+ * only on sustained evidence of a pulse, and three questions have to agree.
  *
  * 1. **Is anything there?** The level peak sits over an adaptive floor that
  *    learns the room, so a quiet flat and a loud party need no separate tuning.
@@ -33,20 +33,20 @@
  *    This is the question that decides. On the first real recordings the gate
  *    ever met, a rumbling room scored a median of 0.075 and never over 0.10,
  *    talking the same, and a punk song through a phone speaker 0.12 with
- *    stretches over 0.14. It needs no setting for the microphone, because an
- *    autocorrelation is normalised.
+ *    stretches of five seconds over 0.15. It needs no setting for the
+ *    microphone, because an autocorrelation is normalised.
  *
  * Until 2026-09-20 there were two more questions, whether the sound was tonal
  * and whether it had onsets or bass, and the pulse took no part. They had only
  * ever met synthetic noise. A real room rumbles, which is a peaky spectrum and
  * so "tonal", nearly all bass, and restless; a real voice is harmonic, bassy
- * and lively. Both answered yes to everything and he danced to 94% of an empty
- * room. The two questions are gone; what they measured is still shown.
+ * and lively. Both answered yes to everything and the page danced to 94% of an
+ * empty room. The two questions are gone; what they measured is still shown.
  *
  * Staying is easier than starting: a lower level, and `pulseLeave` instead of
  * `pulseEnter`. And leaving has two
- * clocks. When the sound stops, or stops moving, he stops after `breakHoldMs`.
- * When it goes on without a pulse, as talking straight after a song does, he
+ * clocks. When the sound stops, or stops moving, it stops after `breakHoldMs`.
+ * When it goes on without a pulse, as talking straight after a song does, it
  * stops after `pulseLeaveMs`, which is long, because the pulse of a real song
  * dips for seconds at a time.
  *
@@ -64,7 +64,7 @@ export const FLOOR_MIN_DB = -80;
 export const FLOOR_MAX_DB = -25;
 
 /** How often the tempo confidence is sampled into the pulse window, in milliseconds. */
-export const PULSE_EVERY_MS = 1000;
+const PULSE_EVERY_MS = 1000;
 
 /**
  * How often the room level is sampled into the floor's window, in
@@ -80,7 +80,7 @@ export const ROOM_EVERY_MS = 1000;
  * flatters whatever it is given: applause, a voice and a band all showed a
  * streak of "pulse" between the eighth and tenth second of their lives.
  */
-export const PULSE_WARMUP_MS = 8000;
+const PULSE_WARMUP_MS = 8000;
 
 /**
  * Share of the timbre window that must be audible before its spread is read:

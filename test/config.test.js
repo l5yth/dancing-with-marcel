@@ -71,6 +71,21 @@ describe('config', () => {
     }
   });
 
+  it('C11: a pulse bar to stay over the bar to start falls back to the defaults', () => {
+    // A leave bar over the enter bar would take a song on evidence that is
+    // already under what keeps it, and drop it `pulseLeaveMs` later, over and
+    // over. Equal is allowed: it is the hysteresis switched off, not reversed.
+    for (const query of ['?pulseLeave=0.4', '?pulseEnter=0.2&pulseLeave=0.3']) {
+      const config = parseConfig(query);
+      assert.equal(config.pulseLeave, DEFAULTS.pulseLeave, query);
+      assert.equal(config.pulseEnter, DEFAULTS.pulseEnter, query);
+    }
+    const level = parseConfig('?pulseEnter=0.3&pulseLeave=0.3');
+    assert.deepEqual([level.pulseEnter, level.pulseLeave], [0.3, 0.3]);
+    const ordered = parseConfig('?pulseEnter=0.3&pulseLeave=0.2');
+    assert.deepEqual([ordered.pulseEnter, ordered.pulseLeave], [0.3, 0.2]);
+  });
+
   it('C11: a valid override wins, with or without the leading question mark', () => {
     assert.equal(parseConfig('?breakHoldMs=4000').breakHoldMs, 4000);
     assert.equal(parseConfig('breakHoldMs=4000').breakHoldMs, 4000);

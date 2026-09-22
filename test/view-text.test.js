@@ -35,6 +35,7 @@ describe('view text', () => {
     const event = {
       time: 12,
       levelDb: -31.234,
+      clipped: 0,
       floorDb: -58.5,
       flatness: 0.42,
       bass: 0.71,
@@ -50,6 +51,7 @@ describe('view text', () => {
     const lines = overlayText(event, DEFAULTS, 3, cast).split('\n');
     assert.equal(lines[0], 'state    music   tier 3');
     assert.match(lines[1], /^level\s+-31\.2 dB\s+floor -58\.5 dB\s+need -46\.5 dB$/);
+    assert.doesNotMatch(lines[1], /CLIPPING/, 'a warning that is always there is no warning');
     assert.match(lines[2], /^swing\s+1\.28 dB\s+need at least 0\.1$/);
     // The question that decides, with both of its bars.
     assert.match(lines[3], /^pulse\s+0\.217\s+need 0\.15 to start, 0\.09 to stay$/);
@@ -62,11 +64,42 @@ describe('view text', () => {
     assert.equal(lines.length, 8);
   });
 
+  it('C20: the overlay warns when the input is clipping, and says how much', () => {
+    // Nothing downstream can undo it: the peaks the onsets are read from are
+    // flattened and the level stops reporting the room. The owner's first
+    // song recording was 46% clipped and the page said nothing.
+    /** @type {PipelineEvent} */
+    const event = {
+      time: 3,
+      levelDb: -0.2,
+      clipped: 0,
+      floorDb: -40,
+      flatness: 0.3,
+      bass: 0.6,
+      swing: 2,
+      pulse: 0.3,
+      state: 'music',
+      bpm: 160,
+      confidence: 0.5,
+      danceBpm: 160,
+      locked: true,
+    };
+    const level = (/** @type {number} */ clipped) =>
+      overlayText({ ...event, clipped }, DEFAULTS, 3, 'cast').split('\n')[1];
+    assert.doesNotMatch(level(0), /CLIPPING/);
+    assert.match(level(0.46), /CLIPPING 46%, turn the gain down$/);
+    assert.match(level(0.004), /CLIPPING 0%, turn the gain down$/, 'one pinned sample is clipping');
+    assert.match(level(1), /CLIPPING 100%, turn the gain down$/);
+    // The rest of the line is what it was.
+    assert.match(level(0.46), /^level\s+-0\.2 dB\s+floor -40\.0 dB\s+need -28\.0 dB\s+CLIPPING/);
+  });
+
   it('C23: the overlay says when a tier is forced, and for how many whole seconds', () => {
     /** @type {PipelineEvent} */
     const event = {
       time: 40,
       levelDb: -20,
+      clipped: 0,
       floorDb: -60,
       flatness: 0.3,
       bass: 0.6,
@@ -107,6 +140,7 @@ describe('view text', () => {
     const event = {
       time: 1,
       levelDb: -60,
+      clipped: 0,
       floorDb: -60,
       flatness: 1,
       bass: 0,

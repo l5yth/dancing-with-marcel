@@ -16,7 +16,7 @@
 
 /**
  * @file `npm run eval -- <file...> [--gap <seconds>]`: run audio files through
- * the pipeline and print what Marcel would have done.
+ * the pipeline and print what the page would have done.
  */
 
 import { runEval } from './lib/eval.mjs';

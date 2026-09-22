@@ -77,6 +77,7 @@ Add parameters to the URL:
 - `?breakRefreshMinMs=60000&breakRefreshMaxMs=300000` set how long a break goes on before the scenes change
 
 With `?debug=1` each value is shown next to the threshold it must clear.
+The level line warns when the input is clipping.
 
 ## Develop
 
