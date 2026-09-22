@@ -91,9 +91,6 @@ const MIN_AUDIBLE_SHARE = 0.5;
 /** Most hops a window may hold, whatever the frame length. */
 const MAX_WINDOW_HOPS = 4096;
 
-/** Most seconds of room level the floor may remember. */
-const MAX_ROOM_SAMPLES = 900;
-
 /**
  * Keep a value inside a range.
  *
@@ -156,6 +153,7 @@ export class Classifier {
      * @type {number}
      */
     this.quietestDb = Number.POSITIVE_INFINITY;
+
     /**
      * Milliseconds of room heard since the last sample was taken.
      * @type {number}
@@ -467,9 +465,13 @@ export class Classifier {
     }
     this.quietestDb = Math.min(this.quietestDb, this.levelDb);
     this.sinceRoomMs += frameMs;
-    if (this.sinceRoomMs >= ROOM_EVERY_MS) {
+    // A loop and not a branch: a frame longer than a second would otherwise
+    // leave the rest of it owed for ever.
+    while (this.sinceRoomMs >= ROOM_EVERY_MS) {
       this.sinceRoomMs -= ROOM_EVERY_MS;
-      this.roomLevels.push(this.quietestDb);
+      // A frame longer than a second is the whole of every second after the
+      // first it covers, so the level stands in where nothing was gathered.
+      this.roomLevels.push(Math.min(this.quietestDb, this.levelDb));
       this.quietestDb = Number.POSITIVE_INFINITY;
       while (this.roomLevels.length > this.roomKept()) {
         this.roomLevels.shift();
@@ -490,7 +492,8 @@ export class Classifier {
    * @returns {number} The count.
    */
   roomKept() {
-    return clamp(Math.round(this.config.floorWindowMs / ROOM_EVERY_MS), 1, MAX_ROOM_SAMPLES);
+    // `floorWindowMs` is bounded by its own range, so this is at most 900.
+    return Math.max(1, Math.round(this.config.floorWindowMs / ROOM_EVERY_MS));
   }
 
   /**

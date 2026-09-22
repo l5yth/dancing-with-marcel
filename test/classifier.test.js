@@ -691,6 +691,56 @@ describe('classifier', () => {
     );
   });
 
+  it('C21: a second is remembered by its quietest moment, not by how it ended', () => {
+    // Half a second of quiet and half a second of noise is a second the room
+    // was quiet in. It is what lets talk over a bed be read at the bed: the
+    // gaps are the room, and the talk between them is not.
+    const classifier = new Classifier({ ...DEFAULTS, floorWindowMs: 60000 });
+    /**
+     * Feed frames of a constant level.
+     *
+     * @param {number} levelDb The level.
+     * @param {number} ms How long.
+     * @returns {void}
+     */
+    const feed = (levelDb, ms) => {
+      for (let elapsed = 0; elapsed < ms; elapsed += 10) {
+        classifier.update({ time: 0, levelDb, flux: 0, flatness: 1, bass: 0, tempo: null }, 10);
+      }
+    };
+    feed(-70, 500);
+    feed(-40, 500);
+    assert.deepEqual(classifier.roomLevels, [-70], 'the second was remembered by how it ended');
+    assert.equal(classifier.roomOf(), -70);
+  });
+
+  it('C21: a frame longer than a second is every second it covers', () => {
+    // The eval feeds whatever ffmpeg hands it, and a frame is a second's worth
+    // of room for each second in it. Owing the rest of a frame to the next one
+    // would leave the window short and the floor reading further back than it
+    // is asked to.
+    const classifier = new Classifier({ ...DEFAULTS, floorWindowMs: 60000 });
+    classifier.update({ time: 0, levelDb: -40, flux: 0, flatness: 1, bass: 0, tempo: null }, 5000);
+    assert.deepEqual(classifier.roomLevels, [-40, -40, -40, -40, -40]);
+    assert.ok(classifier.roomLevels.every((level) => Number.isFinite(level)));
+  });
+
+  it('C21: the floor is a level whatever percentile it is asked for', () => {
+    // The range runs to 1, the loudest second of the window, and a rank taken
+    // from a length must not fall off the end of it.
+    for (const floorPercentile of [0, 0.5, 1]) {
+      const classifier = new Classifier({ ...DEFAULTS, floorPercentile, floorWindowMs: 60000 });
+      for (const levelDb of [-70, -50, -60]) {
+        for (let elapsed = 0; elapsed < 1000; elapsed += 10) {
+          classifier.update({ time: 0, levelDb, flux: 0, flatness: 1, bass: 0, tempo: null }, 10);
+        }
+      }
+      assert.deepEqual(classifier.roomLevels, [-70, -50, -60], `${floorPercentile}`);
+      assert.ok(Number.isFinite(classifier.floorDb), `floor ${classifier.floorDb}`);
+      assert.equal(classifier.roomOf(), [-70, -60, -50][Math.round(floorPercentile * 2)]);
+    }
+  });
+
   it('C21: the floor climbs towards the room of the window, not towards this second', () => {
     // The same rise, with a minute of quiet still in the window: a sound that
     // has been loud for ten seconds is not yet the room, and the floor stays
