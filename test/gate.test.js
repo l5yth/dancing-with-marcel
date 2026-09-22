@@ -29,7 +29,17 @@ import { describe, it } from 'node:test';
 import { Classifier } from '../src/classify/classifier.js';
 import { Pipeline } from '../src/classify/pipeline.js';
 import { DEFAULTS } from '../src/config.js';
-import { band, concat, phoneInRoom, room, rumble, silence, voice } from './helpers/synth.js';
+import {
+  band,
+  concat,
+  fan,
+  phoneInRoom,
+  room,
+  rumble,
+  scaleToDb,
+  silence,
+  voice,
+} from './helpers/synth.js';
 
 const RATE = 44100;
 
@@ -157,5 +167,102 @@ describe('the gate, against a real room', () => {
       `left at ${left.time.toFixed(1)} s; the song ended at ${ended} and the budget is ${budget} s`,
     );
     assert.equal(changes.at(-1), left, 'and came back');
+  });
+
+  it('C21: the floor holds on the pulse evidence, not on the lower bar', () => {
+    // Frames just under the bar, so the gate cannot take them, with a tempo
+    // confidence held at one value. Between pulseLeave and pulseEnter the
+    // floor goes on climbing at its pace: a fan with a wobble and laughter
+    // over a rumble sit there, and held for them the floor never learned
+    // them, they stayed audible for ever, and a fan was danced to for a
+    // minute. At pulseEnter it stops.
+    const climbOver = (/** @type {number} */ confidence) => {
+      const classifier = new Classifier(DEFAULTS);
+      // Twenty seconds for the warm-up and the median, then a fresh start
+      // 11.9 dB under the level peak: inaudible, and room to climb 20 s.
+      const faint = (/** @type {number} */ ms) => ({ ...alive(ms, confidence), levelDb: -43 });
+      for (let ms = 0; ms < 20000; ms += 10) {
+        classifier.update(faint(ms), 10);
+      }
+      classifier.floorDb = -43 - DEFAULTS.musicOverFloorDb + 0.1;
+      for (let ms = 20000; ms < 40000; ms += 10) {
+        classifier.update(faint(ms), 10);
+        assert.equal(classifier.state, 'break', `danced at a confidence of ${confidence}`);
+      }
+      return classifier.floorDb - (-43 - DEFAULTS.musicOverFloorDb + 0.1);
+    };
+    const rise = DEFAULTS.floorRiseDbPerSec * 20;
+    const under = climbOver(DEFAULTS.pulseEnter - 0.01);
+    assert.ok(
+      under >= rise - 0.5,
+      `under the bar the floor climbed ${under.toFixed(1)} dB in 20 s`,
+    );
+    const over = climbOver(DEFAULTS.pulseEnter);
+    assert.equal(over, 0, `at the bar the floor climbed ${over.toFixed(1)} dB in 20 s`);
+  });
+
+  it('C21: a fan with a wobble is still learned as the room', () => {
+    // It moves, and its wobble scores a pulse median between pulseLeave and
+    // pulseEnter, so nothing holds the floor for it: within a minute it is
+    // under the bar, and the gate never takes it.
+    const { events, changes } = run(fan(120, RATE));
+    assert.deepEqual(changes, [], `danced to a fan: ${told(changes)}`);
+    const last = /** @type {PipelineEvent} */ (events.at(-1));
+    assert.ok(
+      last.levelDb < last.floorDb + DEFAULTS.musicOverFloorDb,
+      `the fan is still audible after two minutes: ${last.levelDb.toFixed(1)} over a floor of ${last.floorDb.toFixed(1)}`,
+    );
+    const learned = events.find(
+      (event) => event.levelDb < event.floorDb + DEFAULTS.musicOverFloorDb,
+    );
+    assert.ok(learned !== undefined && learned.time <= 60, 'not learned within a minute');
+  });
+
+  it('C21: a song the floor has not believed yet is not learned as the room', () => {
+    // A broadcast: talk over a bed, so the floor learns the bed, then a song
+    // whose peaks sit 19 dB over it, steady, one 21 dB over it with 4 dB dips
+    // every eight seconds, and one with 6 dB dips, which go under the bar,
+    // where the swing cannot be read. The floor used to climb into the song at half
+    // a decibel a second until the song was under the bar, from where nothing
+    // recovers: the swing is unreadable below the bar, and unreadable counts
+    // as still. Now the pulse evidence holds it, and the most it climbs is
+    // the six seconds' worth before the evidence comes; under the bar, an
+    // unreadable swing does not make a song still.
+    // Two minutes of talk, so the floor has learned the bed at any rise rate.
+    const talkS = 120;
+    const songS = 90;
+    const bed = scaleToDb(room(talkS, RATE), -44);
+    const talk = scaleToDb(voice(talkS, RATE), -40).map((sample, index) => sample + bed[index]);
+    for (const [db, depth, name] of /** @type {[number, number, string][]} */ ([
+      [-34, 0, 'steady'],
+      [-32, 0.37, 'with 4 dB dips'],
+      [-32, 0.5, 'with 6 dB dips, under the bar in the dips'],
+    ])) {
+      const song = scaleToDb(band(150, songS, RATE), db).map(
+        (sample, index) =>
+          sample * (1 - depth * (0.5 + 0.5 * Math.sin((2 * Math.PI * index) / (RATE * 8)))),
+      );
+      const { events, changes } = run(concat(talk, song));
+      const atStart = events.find((event) => event.time >= talkS);
+      const atEnd = events.at(-1);
+      assert.ok(atStart !== undefined && atEnd !== undefined);
+      const climbed = atEnd.floorDb - atStart.floorDb;
+      assert.ok(
+        climbed <= 3.5,
+        `${name}: the floor climbed from ${atStart.floorDb.toFixed(1)} by ${climbed.toFixed(1)} dB`,
+      );
+      const heard = changes.find((event) => event.state === 'music');
+      assert.ok(heard !== undefined, `${name}: never heard as music`);
+      assert.ok(
+        heard.time - talkS <= 20,
+        `${name}: heard at ${(heard.time - talkS).toFixed(1)} s into the song`,
+      );
+      const inSong = events.filter((event) => event.time >= talkS + 20);
+      const music = inSong.filter((event) => event.state === 'music').length / inSong.length;
+      assert.ok(
+        music >= 0.75,
+        `${name}: music for ${(100 * music).toFixed(0)}% of the song after 20 s`,
+      );
+    }
   });
 });

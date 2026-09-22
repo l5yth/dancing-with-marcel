@@ -20,6 +20,9 @@
  *
  * 1. **Is anything there?** The level peak sits over an adaptive floor that
  *    learns the room, so a quiet flat and a loud party need no separate tuning.
+ *    The floor learns nothing while the pulse evidence is there, unless the
+ *    sound is known to be still: a song is not the room, however long the
+ *    first two questions take to agree.
  * 2. **Does the level move?** It spreads at least `minLevelSwingDb` over the
  *    timbre window. A veto on machines, which do not change: a fridge spreads
  *    0.00 to 0.03 dB and the most heavily limited record 0.15. It is what
@@ -193,6 +196,18 @@ export class Classifier {
      */
     this.recent = [];
     /**
+     * Whether the pulse evidence is there: the median over `pulseEnter`, the
+     * third question's own bar.
+     * @type {boolean}
+     */
+    this.pulsing = false;
+    /**
+     * Whether the sound is known to be still, under `minLevelSwingDb`: a hum
+     * or a fridge. False while the swing cannot be read.
+     * @type {boolean}
+     */
+    this.still = false;
+    /**
      * Level in dBFS of each hop in the timbre window, oldest first.
      * @type {number[]}
      */
@@ -290,6 +305,7 @@ export class Classifier {
     const sorted = this.confidences.slice().sort((a, b) => a - b);
     this.pulse =
       sorted.length * 2 >= this.config.pulseWindow ? sorted[Math.floor(sorted.length / 2)] : 0;
+    this.pulsing = this.pulse >= this.config.pulseEnter;
   }
 
   /**
@@ -337,6 +353,7 @@ export class Classifier {
     const spread = this.spread(audibleDb);
     this.swingKnown = spread !== null;
     this.swing = spread ?? 0;
+    this.still = this.swingKnown && this.swing < this.config.minLevelSwingDb;
   }
 
   /**
@@ -374,25 +391,43 @@ export class Classifier {
 
   /**
    * Let the floor learn the room. It drops to a new quiet level at once and
-   * climbs back slowly, and it holds still while a song is playing or the audio
-   * looks like one, so neither a song under way nor a song that was already
-   * playing when the page opened can pull the floor up behind it.
+   * climbs back slowly, and it holds still while a song is playing, or the
+   * audio looks like one, or the pulse evidence is there on its own, so
+   * neither a song under way nor a song that was already playing when the
+   * page opened can pull the floor up behind it.
    *
    * Holding still only once the state had turned was tried on 2026-09-20 and
    * withdrawn the same day. It was meant to let a wrong first impression
    * correct itself, and it cannot: the state turns within a second and holds
    * the floor anyway. What it did do was chase every song through the 1.75 s
    * it takes to be sure of one, lift the bar 3 dB, and lose the quiet ones: a
-   * band ten decibels over the room went from 97% music to never heard. The
-   * fourth question is what keeps a machine out, and with it all four saying
-   * yes is evidence enough to stop learning.
+   * band ten decibels over the room went from 97% music to never heard.
+   *
+   * Holding still only while all three questions said yes was the rule until
+   * 2026-09-22, and it lost songs on the radio: a song's own quiet bar, or a
+   * pulse median still gathering, let the floor climb at half a decibel a
+   * second, and once it was within `musicOverFloorDb` of the song nothing
+   * could recover, since below the bar the swing is unreadable and unreadable
+   * counts as still. Three songs were learned as the room, by 13 to 16 dB.
+   * So the pulse evidence holds the floor on its own, at the bar the third
+   * question sets, `pulseEnter`, whether or not the first two agree yet. Not
+   * at `pulseLeave`: a fan with a 2.7 Hz wobble and laughter over a rumble sit
+   * between the two, and holding the floor for them kept them audible and
+   * danced to for a minute, where before the floor had learned them. The one
+   * exception is a sound known to be still, a hum or a fridge, whose aliasing
+   * scores a confidence of 0.92: that is the room, and the floor goes to meet
+   * it as before, stopping once the hum is under the bar, where the swing
+   * cannot be read. A song whose median sits under `pulseEnter` is not held,
+   * and not taken either. While the evidence is there the floor does not fall
+   * either; after a song into silence it falls once the median has drained,
+   * a few seconds later than before, from a floor the song never raised.
    *
    * @param {number} frameMs Duration of the audio the frame covers.
    * @param {boolean} dancing Whether a song was already playing this frame.
    * @returns {void}
    */
   adaptFloor(frameMs, dancing) {
-    if (this.musicLike || dancing || this.levelDb === null) {
+    if (this.musicLike || dancing || (this.pulsing && !this.still) || this.levelDb === null) {
       return;
     }
     // A quieter room is taken at once and a louder one only at `rise` a frame,

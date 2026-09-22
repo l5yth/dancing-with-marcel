@@ -65,7 +65,11 @@ const PARAMS = {
    * How fast the room floor climbs back towards a louder room, in dB per second.
    * Slow, because being sure of a song takes about ten seconds and the floor
    * must not have climbed to meet it by then: at 3 dB/s it had, and the song
-   * was sat out.
+   * was sat out. Not slower, because a loud room the page opens on has to be
+   * learned before its odd confident second can start a dance: at 0.2 dB/s
+   * a rumbling room danced at 62 s. The pulse evidence, the median over
+   * `pulseEnter`, stops the climb, so a song is met only by the few seconds'
+   * worth before its evidence is in.
    */
   floorRiseDbPerSec: { default: 0.5, min: 0, max: 60 },
   /** Sustained music-like time needed to enter `music`, in milliseconds. */

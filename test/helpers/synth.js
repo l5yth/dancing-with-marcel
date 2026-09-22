@@ -254,6 +254,29 @@ export function quietRoom(seconds, sampleRate, rand = mulberry32(SEED)) {
  * @param {() => number} [rand] Random source.
  * @returns {Float32Array} The hum.
  */
+/**
+ * A fan with a wobble: broadband motor noise whose loudness swings a tenth at
+ * 2.7 Hz, over a room. It moves, so the swing question passes it, and its
+ * wobble scores a tempo confidence around 0.12, between `pulseLeave` and
+ * `pulseEnter`: a room the floor must learn, since the gate never takes it.
+ * Built to the reviewer's fixture of 2026-09-21 that first showed the cost of
+ * holding the floor at the lower bar.
+ *
+ * @param {number} seconds Duration.
+ * @param {number} sampleRate Sample rate in Hz.
+ * @param {() => number} [rand] Random source.
+ * @returns {Float32Array} The fan over the room, about -40 dBFS.
+ */
+export function fan(seconds, sampleRate, rand = mulberry32(SEED)) {
+  const length = Math.round(seconds * sampleRate);
+  const motor = lowpass(noise(length, rand), 2000, sampleRate);
+  const wobble = motor.map(
+    (sample, index) => sample * (1 + 0.1 * Math.sin((2 * Math.PI * 2.7 * index) / sampleRate)),
+  );
+  const bed = room(seconds, sampleRate, rand);
+  return scaleToDb(wobble, -40).map((sample, index) => sample + bed[index]);
+}
+
 export function hum(seconds, sampleRate, rand = mulberry32(SEED)) {
   const length = Math.round(seconds * sampleRate);
   const out = new Float32Array(length);

@@ -169,13 +169,28 @@ describe('a calm room', () => {
     );
     // And the floor goes to meet it, at the pace it now keeps, instead of
     // sitting at its clamp: slow enough not to swallow a song before the gate
-    // is sure of it, so half a decibel a second and not three.
+    // is sure of it, so half a decibel a second and not three. It stops once
+    // the hum is under the bar: a hum's aliasing scores a confident tempo,
+    // which holds the floor whenever the swing cannot be read to say the
+    // sound is still, and under the bar it cannot. Inaudible is what the
+    // floor is for, so that is far enough.
     const before = /** @type {PipelineEvent} */ (events.find((event) => event.time > 20));
     const last = /** @type {PipelineEvent} */ (events.at(-1));
     const learned = DEFAULTS.floorRiseDbPerSec * 25;
+    const under = last.levelDb - DEFAULTS.musicOverFloorDb - 1;
     assert.ok(
-      last.floorDb >= before.floorDb + learned && last.floorDb <= last.levelDb,
-      `after thirty seconds of hum the floor went from ${before.floorDb.toFixed(1)} to ${last.floorDb.toFixed(1)}`,
+      last.floorDb >= Math.min(before.floorDb + learned, under) && last.floorDb <= last.levelDb,
+      `after thirty seconds of hum the floor went from ${before.floorDb.toFixed(1)} to ${last.floorDb.toFixed(1)}, the hum at ${last.levelDb.toFixed(1)}`,
+    );
+    assert.ok(
+      last.levelDb < last.floorDb + DEFAULTS.musicOverFloorDb,
+      `the hum is still audible: ${last.levelDb.toFixed(1)} over a floor of ${last.floorDb.toFixed(1)}`,
+    );
+    // And stops there: a floor that went on to the hum itself would be one
+    // that learned with the swing unreadable, which is how a song is lost.
+    assert.ok(
+      last.floorDb <= last.levelDb - DEFAULTS.musicOverFloorDb + 1,
+      `the floor went on past the bar, to ${last.floorDb.toFixed(1)} under a hum at ${last.levelDb.toFixed(1)}`,
     );
     assert.deepEqual(
       changes.map((event) => `${event.state} at ${event.time.toFixed(1)} s`),
