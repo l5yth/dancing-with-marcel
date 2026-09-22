@@ -90,6 +90,19 @@ export class SceneDirector {
   }
 
   /**
+   * Forget the room: the tier, the drive, and what the room was asking for.
+   * The next decision is read as the first one ever heard.
+   *
+   * @returns {void}
+   */
+  forget() {
+    this.drive = 0;
+    this.tier = 0;
+    this.asked = 0;
+    this.askedAt = 0;
+  }
+
+  /**
    * Feed one decision and get the tier to dance at.
    *
    * @param {PipelineEvent} event The latest decision.

@@ -678,6 +678,70 @@ describe('app', () => {
     assert.equal(plain.document.elements.overlay.textContent, '');
   });
 
+  it('C16: r forgets what it has heard, and leaves the microphone and the tuning alone', async () => {
+    // Chance says no to everything, so the break it falls into moves nobody:
+    // what this test watches is the reset, not the deal.
+    const { stack, document, window, env } = setup({
+      search: '?debug=1&pulseEnter=0.4',
+      random: () => 0.99,
+    });
+    const { director, show } = boot(env);
+    await click(document);
+    const lastMs = walkOn(window, show);
+    push(stack, drums(120, WARM_S, RATE));
+    assert.equal(show.dancing, true, 'the drums were never heard');
+    const contexts = stack.log.contexts.length;
+    const home = show.punks.map((punk) => [punk.state, punk.x]);
+
+    window.listeners.keydown(press({ key: 'r' }));
+    assert.deepEqual([show.dancing, show.tier, director.tier], [false, 0, 0], 'still dancing');
+    assert.equal(document.elements.label.textContent, 'break');
+    // The microphone is not restarted and the punks are not sent to the wings.
+    assert.equal(stack.log.contexts.length, contexts, 'capture was restarted');
+    assert.deepEqual(
+      show.punks.map((punk) => [punk.state, punk.x]),
+      home,
+      'the punks were sent back to the wings',
+    );
+
+    // It has to hear the drums all over again, from nothing.
+    push(stack, drums(120, 5, RATE));
+    assert.equal(document.elements.label.textContent, 'break', 'it remembered the song');
+    assert.match(firstLine(document), /^state\s+break\s+tier 0$/);
+    assert.match(
+      document.elements.overlay.textContent,
+      /^dance\s+140\.0 bpm \(default\)$/m,
+      'the dance tempo was kept',
+    );
+    // The tuning of the URL is the tuning of the URL.
+    assert.match(document.elements.overlay.textContent, /^pulse\s+0\.\d{3}\s+need 0\.4 to start/m);
+    push(stack, drums(120, WARM_S, RATE));
+    assert.equal(show.dancing, true, 'it never heard the drums again');
+  });
+
+  it('C16: a plain r only, and it does not disturb a forced tier or the overlay', () => {
+    const { document, window, env } = setup({ search: '?debug=1' });
+    const { show } = boot(env);
+    walkOn(window, show);
+    window.listeners.keydown(press({ key: '2' }));
+    assert.deepEqual([show.dancing, show.tier], [true, 2]);
+    const untouched = document.elements.label.textContent;
+    for (const other of [
+      press({ key: 'r', ctrlKey: true }),
+      press({ key: 'r', metaKey: true }),
+      press({ key: 'r', altKey: true }),
+      press({ key: 'r', repeat: true }),
+    ]) {
+      window.listeners.keydown(other);
+      assert.equal(document.elements.label.textContent, untouched, JSON.stringify(other));
+    }
+    // A forced tier is not something it has heard, so it survives.
+    window.listeners.keydown(press({ key: 'R' }));
+    assert.equal(document.elements.label.textContent, 'break');
+    assert.deepEqual([show.dancing, show.tier], [true, 2], 'the forced tier was reset');
+    assert.equal(document.elements.overlay.hidden, false, 'the overlay was hidden');
+  });
+
   it('unit: ?debug=1 also shows the repository link', () => {
     const { document, env } = setup({ search: '?debug=1' });
     boot(env);

@@ -333,6 +333,34 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
     assert.deepEqual(session.logs, [], 'the console stayed quiet');
   });
 
+  it('C16: a real r press forgets what it has heard', async () => {
+    const session = await page({ query: '?debug=1&breakFrameMs=100' });
+    await click(session, 'start');
+    const overlay = () =>
+      session.evaluate(`document.getElementById('overlay').textContent`).then(String);
+    const heard = await until(async () => /^state\s+music/m.test(await overlay()), 35000);
+    assert.ok(heard, 'the drums were never heard');
+
+    for (const type of ['keyDown', 'keyUp']) {
+      await session.send('Input.dispatchKeyEvent', {
+        type,
+        key: 'r',
+        code: 'KeyR',
+        text: type === 'keyDown' ? 'r' : undefined,
+        windowsVirtualKeyCode: 82,
+      });
+    }
+    // It is in a break again and the dance tempo is the default, both of which
+    // it had left behind; the label follows within one hop.
+    const forgotten = await until(
+      async () => /^state\s+break[\s\S]*^dance\s+140\.0 bpm \(default\)$/m.test(await overlay()),
+      3000,
+    );
+    assert.ok(forgotten, `r was not heard: ${await overlay()}`);
+    assert.equal(await session.evaluate(`document.getElementById('label').textContent`), 'break');
+    assert.deepEqual(session.logs, [], 'the console stayed quiet');
+  });
+
   it('C18: the debug text is one block in the corner, on its own ground', async () => {
     const session = await page({ query: '?debug=1' });
     const look = await session.evaluate(

@@ -51,6 +51,9 @@ Press `0` to force a break, or `1`, `2` or `3` to force a dance tier, for 30
 seconds. Each press restarts the 30 seconds. Detection keeps running and takes
 over again when they run out.
 
+Press `r` to forget the room level and start listening again. The microphone
+keeps running and the URL settings are kept.
+
 Add parameters to the URL:
 
 - `?debug=1` shows the live values and a link to the repository

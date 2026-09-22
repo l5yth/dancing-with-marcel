@@ -24,6 +24,8 @@
  *
  * The debug text is shown by `?debug=1` and shown or hidden at any time by
  * pressing `d`, so the projector can be checked without reloading the page.
+ * `r` forgets what has been heard, for a night when the room has moved or a
+ * badly mixed song has been taken for it.
  * The keys `0` to `3` force a break or a dance tier for thirty seconds (SPEC
  * T1 to T5); the detector and the director keep running underneath.
  */
@@ -140,6 +142,28 @@ export function boot(env) {
       overlayNow(last);
     }
   };
+  /**
+   * Forget the room and everything heard in it: the floor, the pulse window,
+   * the tempo and the state, by letting the next frame build a pipeline of its
+   * own. The microphone is left running and the tuning of the URL is left
+   * alone, so this is not a reload; the punks are not sent back to the wings
+   * either, though they follow the detector into a break until it hears music
+   * again.
+   *
+   * @returns {void}
+   */
+  const forget = () => {
+    pipeline = null;
+    last = null;
+    danceBpm = config.defaultBpm;
+    overlayMs = 0;
+    director.forget();
+    apply(frameMs);
+    label.textContent = debugLabel('break', null);
+    if (debug) {
+      overlay.textContent = '';
+    }
+  };
   const fit = () => stage.fit(window.innerWidth, window.innerHeight);
   // Dancing is locked to the beat: a frame per eighth note at the detected
   // tempo. Between songs there is no beat to follow, and the pace is unhurried.
@@ -224,6 +248,8 @@ export function boot(env) {
     if (event.key.toLowerCase() === 'd') {
       debug = !debug;
       showDebug();
+    } else if (event.key.toLowerCase() === 'r') {
+      forget();
     } else if (override.press(event.key, frameMs)) {
       // At once, ahead of the next event and the next frame, and the overlay
       // says so at once too.
