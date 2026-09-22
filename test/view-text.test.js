@@ -52,6 +52,7 @@ describe('view text', () => {
     assert.equal(lines[0], 'state    music   tier 3');
     assert.match(lines[1], /^level\s+-31\.2 dB\s+floor -58\.5 dB\s+need -46\.5 dB$/);
     assert.doesNotMatch(lines[1], /CLIPPING/, 'a warning that is always there is no warning');
+    assert.doesNotMatch(lines[1], /\(max\)/, 'the floor has room to climb');
     assert.match(lines[2], /^swing\s+1\.28 dB\s+need at least 0\.1$/);
     // The question that decides, with both of its bars.
     assert.match(lines[3], /^pulse\s+0\.217\s+need 0\.15 to start, 0\.09 to stay$/);
@@ -90,8 +91,44 @@ describe('view text', () => {
     assert.match(level(0.46), /CLIPPING 46%, turn the gain down$/);
     assert.match(level(0.004), /CLIPPING 0%, turn the gain down$/, 'one pinned sample is clipping');
     assert.match(level(1), /CLIPPING 100%, turn the gain down$/);
+    assert.match(level(0.995), /CLIPPING 100%/, 'the share is rounded, not cut off');
+    assert.match(level(0.994), /CLIPPING 99%/);
     // The rest of the line is what it was.
     assert.match(level(0.46), /^level\s+-0\.2 dB\s+floor -40\.0 dB\s+need -28\.0 dB\s+CLIPPING/);
+  });
+
+  it('C20: the overlay says when the floor has climbed as far as it may', () => {
+    // A page that has gone deaf reads `floor -25.0 dB (max)   need -13.0 dB`,
+    // and that is the whole story. Without the word the operator has to know
+    // the ceiling by heart.
+    /** @type {PipelineEvent} */
+    const event = {
+      time: 90,
+      levelDb: -13.5,
+      clipped: 0,
+      floorDb: -25,
+      flatness: 0.3,
+      bass: 0.6,
+      swing: 4,
+      pulse: 0.1,
+      state: 'break',
+      bpm: 150,
+      confidence: 0.1,
+      danceBpm: 140,
+      locked: false,
+    };
+    const level = (/** @type {number} */ floorDb) =>
+      overlayText({ ...event, floorDb }, DEFAULTS, 0, 'cast').split('\n')[1];
+    assert.match(level(-25), /^level\s+-13\.5 dB\s+floor -25\.0 dB \(max\)\s+need -13\.0 dB$/);
+    assert.doesNotMatch(level(-25.1), /\(max\)/);
+    assert.match(level(-24), /\(max\)/, 'over the ceiling is still at it');
+    // And the ceiling the operator set is the one it reports.
+    const low = { ...DEFAULTS, floorMaxDb: -45 };
+    assert.doesNotMatch(
+      overlayText({ ...event, floorDb: -46 }, low, 0, 'c').split('\n')[1],
+      /\(max\)/,
+    );
+    assert.match(overlayText({ ...event, floorDb: -45 }, low, 0, 'c').split('\n')[1], /\(max\)/);
   });
 
   it('C23: the overlay says when a tier is forced, and for how many whole seconds', () => {

@@ -27,6 +27,13 @@ body {
   overflow: hidden;
   background: var(--bg);
   color: var(--fg);
+  /* Nothing on a projector wants a mouse pointer parked on it all evening.
+     The panel takes it back, since the start button has to be hit. */
+  cursor: none;
+}
+
+#panel {
+  cursor: auto;
 }
 
 body {

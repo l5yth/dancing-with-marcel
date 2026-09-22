@@ -226,11 +226,18 @@ export class Capture {
   }
 
   /**
-   * Restart the countdown that fires when frames stop arriving.
+   * Restart the countdown that fires when frames stop arriving. Only while
+   * capture is running: a frame still in flight when the microphone was lost
+   * would otherwise take the retry's timer slot, and since `lost` returns at
+   * once when the status is not `running`, nothing would ever be scheduled
+   * again and the page would sit in `error` for the night.
    *
    * @returns {void}
    */
   armWatchdog() {
+    if (this.status !== 'running') {
+      return;
+    }
     this.clearTimer();
     this.timer = this.deps.timers.setTimeout(
       () => this.lost('the microphone went quiet'),

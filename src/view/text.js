@@ -45,6 +45,11 @@ export function statusText(status, detail = '') {
 }
 
 /**
+ * The floor reading `(max)` is the whole story of a page that has gone deaf:
+ * the room has been learned all the way to `floorMaxDb`, the bar is
+ * `musicOverFloorDb` over that, and nothing in the room reaches it. Without
+ * the word the operator has to know the ceiling by heart to read the line.
+ *
  * What to say about a hop that is pinned at full scale. Nothing, while nothing
  * is: a warning that is always there is not a warning. Nothing downstream can
  * undo clipping, so it is said beside the level and not left to be inferred
@@ -77,7 +82,7 @@ export function overlayText(event, config, tier, cast, forced = null) {
   const hold = forced === null ? '' : ` (forced, ${Math.ceil(forced.leftMs / 1000)} s left)`;
   return [
     `state    ${event.state}   tier ${tier}${hold}`,
-    `level    ${event.levelDb.toFixed(1)} dB   floor ${event.floorDb.toFixed(1)} dB   need ${(event.floorDb + config.musicOverFloorDb).toFixed(1)} dB${clipping(event.clipped)}`,
+    `level    ${event.levelDb.toFixed(1)} dB   floor ${event.floorDb.toFixed(1)} dB${event.floorDb >= config.floorMaxDb ? ' (max)' : ''}   need ${(event.floorDb + config.musicOverFloorDb).toFixed(1)} dB${clipping(event.clipped)}`,
     `swing    ${event.swing.toFixed(2)} dB   need at least ${config.minLevelSwingDb}`,
     `pulse    ${event.pulse.toFixed(3)}   need ${config.pulseEnter} to start, ${config.pulseLeave} to stay`,
     `tempo    ${bpm} bpm at ${event.confidence.toFixed(2)}   need ${config.tempoMinConfidence}`,

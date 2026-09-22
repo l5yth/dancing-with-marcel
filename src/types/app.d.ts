@@ -54,6 +54,8 @@ interface Config {
   timbreWindowMs: number;
   /** How fast the room floor climbs back towards a louder room, in dB per second. */
   floorRiseDbPerSec: number;
+  /** Loudest the learned room floor may go, in dBFS. */
+  floorMaxDb: number;
   /** How far back the room level is read to find the floor, in milliseconds. */
   floorWindowMs: number;
   /** Which of the last few minutes the floor sits under, 0 quietest to 1 loudest. */

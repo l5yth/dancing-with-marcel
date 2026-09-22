@@ -687,7 +687,7 @@ describe('app', () => {
     });
     const { director, show } = boot(env);
     await click(document);
-    const lastMs = walkOn(window, show);
+    walkOn(window, show);
     push(stack, drums(120, WARM_S, RATE));
     assert.equal(show.dancing, true, 'the drums were never heard');
     const contexts = stack.log.contexts.length;
@@ -719,10 +719,33 @@ describe('app', () => {
     assert.equal(show.dancing, true, 'it never heard the drums again');
   });
 
+  it('C16: r puts the dance tempo back to the default', async () => {
+    // The app keeps its own `danceBpm` for the tick rate, and a fresh pipeline
+    // does not reach it. Forced to a tier with no audio, they tick at whatever
+    // the app last kept: 24 ticks in six seconds at the song's 120, 28 at the
+    // default 140.
+    const { stack, document, window, env } = setup();
+    const { show } = boot(env);
+    await click(document);
+    const lastMs = walkOn(window, show);
+    push(stack, drums(120, WARM_S, RATE));
+    assert.match(document.elements.label.textContent, /^music \(1[12]\d bpm\)$/);
+
+    window.listeners.keydown(press({ key: 'r' }));
+    window.listeners.keydown(press({ key: '2' }));
+    assert.deepEqual([show.dancing, show.tier], [true, 2]);
+    const counter = countTicks(show);
+    window.runFrame(lastMs + 1);
+    for (let elapsedMs = lastMs + 6; elapsedMs <= lastMs + 6001; elapsedMs += 5) {
+      window.runFrame(elapsedMs);
+    }
+    assert.ok(Math.abs(counter.ticks - 28) <= 1, `${counter.ticks} ticks in 6 s, not 28`);
+  });
+
   it('C16: a plain r only, and it does not disturb a forced tier or the overlay', () => {
     const { document, window, env } = setup({ search: '?debug=1' });
     const { show } = boot(env);
-    walkOn(window, show);
+    const lastMs = walkOn(window, show);
     window.listeners.keydown(press({ key: '2' }));
     assert.deepEqual([show.dancing, show.tier], [true, 2]);
     const untouched = document.elements.label.textContent;
@@ -739,6 +762,16 @@ describe('app', () => {
     window.listeners.keydown(press({ key: 'R' }));
     assert.equal(document.elements.label.textContent, 'break');
     assert.deepEqual([show.dancing, show.tier], [true, 2], 'the forced tier was reset');
+    // And still forced on the frames after it, not only in the instant of the
+    // press: the override is not something the page heard.
+    window.runFrame(lastMs + 16);
+    assert.deepEqual(
+      [show.dancing, show.tier],
+      [true, 2],
+      'the forced tier went on the next frame',
+    );
+    window.runFrame(lastMs + 2000);
+    assert.deepEqual([show.dancing, show.tier], [true, 2]);
     assert.equal(document.elements.overlay.hidden, false, 'the overlay was hidden');
   });
 

@@ -25,9 +25,10 @@
  *    first two questions take to agree.
  * 2. **Does the level move?** It spreads at least `minLevelSwingDb` over the
  *    timbre window. A veto on machines, which do not change: a fridge spreads
- *    0.00 to 0.03 dB and the most heavily limited record 0.15. It is what
- *    keeps out a mains hum, whose onset envelope aliases against
- *    the hop and scores a tempo confidence of 0.92.
+ *    0.01 to 0.11 dB and sits at a median of 0.04, a record through a 20:1
+ *    limiter 0.15 at its calmest and 0.70 at its median. It is what keeps out
+ *    a mains hum, whose onset envelope aliases against the hop and scores a
+ *    tempo confidence of 0.92.
  * 3. **Is there a pulse, and has there been for a while?** The median tempo
  *    confidence of the last `pulseWindow` seconds is at least `pulseEnter`.
  *    This is the question that decides. On the first real recordings the gate
@@ -57,10 +58,21 @@
 /** Level the floor starts at, in dBFS, before any audio has been heard. */
 export const FLOOR_START_DB = -60;
 
+/**
+ * Share of `pulseLeave` under which the evidence is not faint but gone, and
+ * `breakHoldMs` of it is enough to stop. Measured while the owner's recording
+ * and the three reference records played: the evidence never fell under 0.079,
+ * so two thirds of the bar, 0.06, is well under anything a song has shown.
+ */
+const PULSE_GONE_SHARE = 2 / 3;
+
 /** Quietest the floor may go, in dBFS: below this, faint noise would look loud. */
 export const FLOOR_MIN_DB = -80;
 
-/** Loudest the floor may go, in dBFS: above this, nothing in the room would count as music. */
+/**
+ * Loudest the floor may go by default, in dBFS: above this, nothing in the
+ * room would count as music. `floorMaxDb` overrides it.
+ */
 export const FLOOR_MAX_DB = -25;
 
 /** How often the tempo confidence is sampled into the pulse window, in milliseconds. */
@@ -137,6 +149,11 @@ export class Classifier {
      * @type {number}
      */
     this.faintMs = 0;
+    /**
+     * Milliseconds the pulse has been not faint but gone, while in `music`.
+     * @type {number}
+     */
+    this.goneMs = 0;
     /**
      * Learned level of the room, in dBFS.
      * @type {number}
@@ -261,8 +278,8 @@ export class Classifier {
     const audibleDb = this.floorDb + (dancing ? config.breakUnderFloorDb : config.musicOverFloorDb);
     this.measure(audibleDb);
     const audible = this.levelDb !== null && this.levelDb >= audibleDb;
-    // A veto on machines and nothing finer: a fridge spreads 0.00 to 0.03 dB
-    // and a record through a hard limiter 0.15 and up. While a song is
+    // A veto on machines and nothing finer: a fridge sits at a median of
+    // 0.04 dB and a limited record at 0.70. While a song is
     // playing, a window too empty to read is not evidence of stillness: after
     // a stop the spread is unreadable for half a window. To start, the
     // evidence has to be there.
@@ -276,13 +293,20 @@ export class Classifier {
         this.enter('music');
       }
     } else {
-      // Two clocks. The sound stopping is quick to see and quick to act on; a
-      // pulse that has gone while the sound goes on is neither, because the
-      // pulse of a real song dips for seconds at a time.
+      // Three clocks. The sound stopping is quick to see and quick to act on.
+      // A pulse that has merely gone faint is neither, because the pulse of a
+      // real song dips for seconds at a time. A pulse that is gone is quick
+      // again: no song has ever shown one.
       this.musicLike = alive && this.pulse >= config.pulseLeave;
       this.quietMs = alive ? 0 : this.quietMs + frameMs;
       this.faintMs = this.pulse >= config.pulseLeave ? 0 : this.faintMs + frameMs;
-      if (this.quietMs >= config.breakHoldMs || this.faintMs >= config.pulseLeaveMs) {
+      const gone = config.pulseLeave * PULSE_GONE_SHARE;
+      this.goneMs = this.pulse >= gone ? 0 : this.goneMs + frameMs;
+      if (
+        this.quietMs >= config.breakHoldMs ||
+        this.faintMs >= config.pulseLeaveMs ||
+        this.goneMs >= config.breakHoldMs
+      ) {
         this.enter('break');
       }
     }
@@ -301,6 +325,7 @@ export class Classifier {
     this.heldMs = 0;
     this.quietMs = 0;
     this.faintMs = 0;
+    this.goneMs = 0;
   }
 
   /**
@@ -483,7 +508,11 @@ export class Classifier {
     // never more than what is audible now.
     const rise = (this.config.floorRiseDbPerSec * frameMs) / 1000;
     const target = Math.min(this.roomOf(), this.levelDb);
-    this.floorDb = clamp(Math.min(target, this.floorDb + rise), FLOOR_MIN_DB, FLOOR_MAX_DB);
+    this.floorDb = clamp(
+      Math.min(target, this.floorDb + rise),
+      FLOOR_MIN_DB,
+      this.config.floorMaxDb,
+    );
   }
 
   /**

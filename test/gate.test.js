@@ -113,6 +113,28 @@ describe('the pulse evidence', () => {
 });
 
 describe('the gate, against a real room', () => {
+  it('C21: a pulse that is gone, not merely faint, ends the song at once', () => {
+    // Ten seconds of patience are for a song whose pulse dips. Measured while
+    // the owner's recording and the three reference records played, the
+    // evidence never fell under 0.079, so two thirds of the leave bar is a
+    // third below anything a song has shown and there is nothing to wait for.
+    const after = (/** @type {number} */ confidence) => {
+      const classifier = new Classifier(DEFAULTS);
+      for (let ms = 0; ms < 120000; ms += 10) {
+        classifier.update(alive(ms, ms < 30000 ? 0.3 : confidence), 10);
+        if (ms > 30000 && classifier.state === 'break') {
+          return (ms - 30000) / 1000;
+        }
+      }
+      return null;
+    };
+    const faint = after(DEFAULTS.pulseLeave - 0.005);
+    assert.ok(faint !== null && faint >= 12 && faint <= 18, `faint: ${faint} s`);
+    const gone = after(DEFAULTS.pulseLeave * (2 / 3) - 0.005);
+    assert.ok(gone !== null && gone >= 4 && gone <= 9, `gone: ${gone} s`);
+    assert.ok(gone < faint - 5, `gone ${gone} s against faint ${faint} s`);
+  });
+
   it('C21: a room that rumbles is not music', () => {
     // As it was recorded: the stream opens on a moment of digital silence, the
     // floor drops to its clamp, and everything after it is loud. The old gate
@@ -283,6 +305,10 @@ describe('the gate, against a real room', () => {
           sample * (1 - depth * (0.5 + 0.5 * Math.sin((2 * Math.PI * index) / (RATE * 8)))),
       );
       const { events, changes } = run(concat(talk, song));
+      assert.ok(
+        changes.every((event) => event.state !== 'music' || event.time >= talkS),
+        `${name}: the talk over the bed was heard as music`,
+      );
       const atStart = events.find((event) => event.time >= talkS);
       const atEnd = events.at(-1);
       assert.ok(atStart !== undefined && atEnd !== undefined);

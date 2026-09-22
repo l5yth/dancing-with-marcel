@@ -330,4 +330,31 @@ describe('capture', () => {
       assert.match(source, literal);
     }
   });
+
+  it('C12: a frame in flight when the microphone is lost does not cancel the retry', async () => {
+    // The watchdog and the retry share one timer slot. A frame delivered after
+    // the track ended used to re-arm the watchdog over the pending retry, and
+    // since `lost` returns at once when the status is not `running`, the
+    // watchdog fired into nothing and the page sat in `error` for the night.
+    const { stack, timers, capture } = setup();
+    await capture.start();
+    const [node] = stack.log.nodes;
+    const [stream] = stack.log.streams;
+    assert.equal(capture.status, 'running');
+    stream.getTracks()[0].onended();
+    assert.equal(capture.status, 'error');
+    const due = timers.pending.map((timer) => timer.at);
+    assert.equal(due.length, 1, 'no retry was scheduled');
+
+    // The straggler: one frame the worklet had already posted.
+    node.port.onmessage({ data: new Float32Array(512) });
+    assert.deepEqual(
+      timers.pending.map((timer) => timer.at),
+      due,
+      'the straggler took the retry slot',
+    );
+    timers.advance(due[0]);
+    await Promise.resolve();
+    assert.ok(stack.log.contexts.length >= 2, 'it never tried again');
+  });
 });

@@ -369,15 +369,23 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
            const style = getComputedStyle(document.getElementById(id));
            return { family: style.fontFamily, size: style.fontSize, ground: style.backgroundColor };
          };
-         return { overlay: read('overlay'), repo: read('repo') };
+         return { overlay: read('overlay'), repo: read('repo'),
+                  cursor: { body: getComputedStyle(document.body).cursor,
+                            panel: getComputedStyle(document.getElementById('panel')).cursor,
+                            stage: getComputedStyle(document.getElementById('stage')).cursor } };
        })()`,
     );
+    // Nothing on a projector wants a mouse pointer parked on it all evening,
+    // and the start button still has to be hit.
+    assert.equal(look.cursor.body, 'none', 'the pointer is on the projector');
+    assert.equal(look.cursor.stage, 'none', 'the pointer is over the punks');
+    assert.notEqual(look.cursor.panel, 'none', 'the start button cannot be aimed at');
     // The repository link is debug information too, so it is set like the rest
     // of it rather than in the body font at whatever size a link inherits.
     assert.equal(look.repo.family, look.overlay.family, 'the link is in another font');
     assert.equal(look.repo.size, look.overlay.size, 'the link is at another size');
     // Both lie over the art, so both need a ground of their own to stay legible.
-    for (const [name, part] of Object.entries(look)) {
+    for (const [name, part] of Object.entries({ overlay: look.overlay, repo: look.repo })) {
       assert.equal(part.ground, 'rgb(0, 0, 0)', `${name} is transparent over the figure`);
     }
   });

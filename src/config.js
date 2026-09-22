@@ -54,9 +54,11 @@ const PARAMS = {
   /**
    * How far the audible level must spread over the timbre window, from its
    * 10th to its 90th percentile, in dB. A veto on machines, which do not
-   * change: a fridge measures 0.00 to 0.03 and a record through a hard limiter
-   * 0.15 and up. It is a spread and not a level, so it needs no setting for
-   * the room or the microphone. 0 switches the question off.
+   * change: a fridge sits at a median of 0.04 and a record through a 20:1
+   * limiter at 0.70. It is a spread and not a level, so it needs no setting
+   * for the room or the microphone. 0 switches the question off. A harder
+   * limiter dips under the bar, which is why the swing only ever vetoes: a
+   * song that has already been taken is kept by the other two questions.
    */
   minLevelSwingDb: { default: 0.1, min: 0, max: 20 },
   /** How far back tonality and bass are read, in milliseconds. */
@@ -70,6 +72,16 @@ const PARAMS = {
    * a rumbling room danced at 62 s.
    */
   floorRiseDbPerSec: { default: 0.5, min: 0, max: 60 },
+  /**
+   * Loudest the learned room floor may go, in dBFS. Above this, nothing in the
+   * room would count as music, since the bar is `musicOverFloorDb` over it: at
+   * the default the bar is -13 dBFS, which only a very loud source reaches. A
+   * room that is louder than this is not learned, and everything in it stays
+   * audible; the pulse question is then what keeps the punks still. Its range
+   * stops one decibel above the floor's own minimum, so the two can never
+   * cross.
+   */
+  floorMaxDb: { default: -25, min: -79, max: 0 },
   /**
    * How far back the room level is read to find the floor, in milliseconds.
    * Longer than a song, so that a song the gate never took, or a long intro

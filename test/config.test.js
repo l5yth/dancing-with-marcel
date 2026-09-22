@@ -31,6 +31,7 @@ describe('config', () => {
       pulseWindow: 8,
       minLevelSwingDb: 0.1,
       timbreWindowMs: 1500,
+      floorMaxDb: -25,
       floorRiseDbPerSec: 0.5,
       floorWindowMs: 180000,
       floorPercentile: 0.2,
@@ -69,6 +70,18 @@ describe('config', () => {
       assert.equal(config.bpmMin, DEFAULTS.bpmMin, query);
       assert.equal(config.bpmMax, DEFAULTS.bpmMax, query);
     }
+  });
+
+  it('C11: the floor ceiling is tunable and cannot be pushed under the floor itself', () => {
+    // A room louder than the ceiling is never learned, so an operator whose
+    // room is loud needs to move it; it must stay above the floor's own
+    // minimum, or the two would cross and the clamp would have no room.
+    assert.equal(DEFAULTS.floorMaxDb, -25);
+    assert.equal(parseConfig('?floorMaxDb=-45').floorMaxDb, -45);
+    assert.equal(parseConfig('?floorMaxDb=-79').floorMaxDb, -79);
+    assert.equal(parseConfig('?floorMaxDb=-80').floorMaxDb, DEFAULTS.floorMaxDb, 'at the floor');
+    assert.equal(parseConfig('?floorMaxDb=-100').floorMaxDb, DEFAULTS.floorMaxDb);
+    assert.equal(parseConfig('?floorMaxDb=1').floorMaxDb, DEFAULTS.floorMaxDb);
   });
 
   it('C11: a pulse bar to stay over the bar to start falls back to the defaults', () => {

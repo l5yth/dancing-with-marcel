@@ -150,6 +150,23 @@ describe('scene director', () => {
     assert.equal(scene.tier, 3);
   });
 
+  it('C8: a director that has forgotten reads the next decision as its first', () => {
+    // What `r` does to the tier (SPEC D8). Every field goes, including the
+    // moment the room began asking, which nothing reads once the tier is 0 but
+    // which would otherwise be a time from the last song.
+    const scene = opening({ levelDb: -20, danceBpm: 185 });
+    scene.update(event({ time: 40, levelDb: -20, danceBpm: 185 }));
+    assert.deepEqual([scene.tier, scene.asked], [3, 3]);
+    assert.ok(scene.drive > 0 && scene.askedAt === 0);
+    scene.update(event({ time: 90, levelDb: -47, danceBpm: 100 }));
+    assert.equal(scene.askedAt, 90, 'the room began asking for less');
+
+    scene.forget();
+    assert.deepEqual([scene.tier, scene.asked, scene.askedAt, scene.drive], [0, 0, 0, 0]);
+    // And the next decision is taken at once, as the first one ever heard.
+    assert.equal(scene.update(event({ time: 91, levelDb: -20, danceBpm: 185 })), 3);
+  });
+
   it('C8: level weighs more than tempo, so loud and slow beats quiet and fast', () => {
     // Every earlier case moved level and tempo together, which any blend of
     // the two would pass. These pull them apart.

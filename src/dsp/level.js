@@ -24,10 +24,12 @@ export const SILENCE_DB = -120;
 
 /**
  * How close to full scale a sample must sit to count as pinned there. Below
- * this an analogue-to-digital converter is still resolving the waveform;
- * at it, it has run out of numbers and the shape is gone.
+ * this an analogue-to-digital converter is still resolving the waveform; at
+ * it, it has run out of numbers and the shape is gone. Rounded to the nearest
+ * float32, since the samples are: as a float64 no sample could ever equal it
+ * and the boundary would be untestable.
  */
-const CLIP_CEILING = 0.999;
+const CLIP_CEILING = Math.fround(0.999);
 
 /**
  * Share of a frame's samples pinned at full scale, which is what too much
