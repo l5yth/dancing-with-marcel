@@ -28,6 +28,9 @@
  * badly mixed song has been taken for it.
  * The keys `0` to `3` force a break or a dance tier for thirty seconds (SPEC
  * T1 to T5); the detector and the director keep running underneath.
+ * With the debug text, a slider moves the ceiling of the learned floor,
+ * `floorMaxDb`, while the page runs: the lever for a page gone deaf, whose
+ * floor has climbed into a song (SPEC S1 to S5).
  */
 
 import { Capture } from './audio/capture.js';
@@ -36,9 +39,9 @@ import { Override } from './classify/override.js';
 import { Pipeline } from './classify/pipeline.js';
 import { SceneDirector } from './classify/scene.js';
 import { Show } from './classify/show.js';
-import { isDebug, parseConfig } from './config.js';
+import { configWith, isDebug, parseConfig, RANGES } from './config.js';
 import { Stage } from './view/stage.js';
-import { overlayText, statusText } from './view/text.js';
+import { ceilingText, overlayText, statusText } from './view/text.js';
 
 /** Milliseconds of audio between two refreshes of the debug overlay. */
 const OVERLAY_INTERVAL_MS = 100;
@@ -72,13 +75,17 @@ function element(document, id) {
  */
 export function boot(env) {
   const { document, location, navigator, window } = env;
-  const config = parseConfig(location.search);
+  // The tuning of the URL, with the ceiling the slider has set since.
+  let config = parseConfig(location.search);
   let debug = isDebug(location.search);
   const start = element(document, 'start');
   const label = element(document, 'label');
   const panel = element(document, 'panel');
   const overlay = element(document, 'overlay');
   const repo = element(document, 'repo');
+  const ceiling = element(document, 'ceiling');
+  const slider = /** @type {HTMLInputElement} */ (element(document, 'ceiling-slider'));
+  const ceilingDb = element(document, 'ceiling-db');
 
   const stage = new Stage({ element: element(document, 'stage'), document });
   const director = new SceneDirector({ config });
@@ -136,14 +143,16 @@ export function boot(env) {
     const forced = override.at(frameMs);
     overlay.textContent = overlayText(event, config, heard(frameMs).tier, show.caption(), forced);
   };
-  // Show or hide the debug text, with what was last heard if anything was.
-  // The pointer follows it: it is hidden only on a page that is running and
-  // has nothing to read, which is the page the projector shows. The body
-  // carries no other class, so the name is set and cleared outright.
+  // Show or hide the debug text, with what was last heard if anything was,
+  // and the floor ceiling slider with it. The pointer follows it: it is
+  // hidden only on a page that is running and has nothing to read, which is
+  // the page the projector shows. The body carries no other class, so the
+  // name is set and cleared outright.
   const showDebug = () => {
     document.body.className = running && !debug ? 'bare' : '';
     overlay.hidden = !debug;
     repo.hidden = !debug;
+    ceiling.hidden = !debug;
     if (debug && last !== null) {
       overlayNow(last);
     }
@@ -169,6 +178,36 @@ export function boot(env) {
     if (debug) {
       overlay.textContent = '';
     }
+  };
+  /**
+   * Move the ceiling of the floor to where the slider says (SPEC S1, S2). The
+   * value goes through `configWith`, as the URL's does, and one it does not
+   * take changes nothing: `configWith` would put the default in its place,
+   * and a slider that jumped back to -25 would undo the very rescue it was
+   * moved for. The pipeline takes the new ceiling at once; one built later,
+   * after `r`, is built with it (SPEC S5).
+   *
+   * @returns {void}
+   */
+  const retune = () => {
+    // An empty value is no value, as it is in the URL, and not the 0 that
+    // `Number` would make of it.
+    const wanted = slider.value.trim() === '' ? Number.NaN : Number(slider.value);
+    const next = configWith({ ...config, floorMaxDb: wanted });
+    if (next.floorMaxDb !== wanted) {
+      return;
+    }
+    config = next;
+    pipeline?.retune(config);
+    // The floor went down with the ceiling in the pipeline just now, and so
+    // it does in what was last heard: `d` or a forced tier may write the
+    // overlay before the next frame, and with the microphone lost that is
+    // a while. Without this they would set the old floor beside the new
+    // ceiling's `(max)` and `need`.
+    if (last !== null) {
+      last = { ...last, floorDb: Math.min(last.floorDb, config.floorMaxDb) };
+    }
+    ceilingDb.textContent = ceilingText(config.floorMaxDb);
   };
   const fit = () => stage.fit(window.innerWidth, window.innerHeight);
   // Dancing is locked to the beat: a frame per eighth note at the detected
@@ -244,6 +283,17 @@ export function boot(env) {
       }
     },
   });
+  // The slider runs over the range the URL may set the ceiling in, a
+  // decibel a step, and opens at the ceiling in force. The range is set
+  // before the value, which a range input would otherwise clamp to its
+  // default of 0 to 100.
+  const [lowest, highest] = RANGES.floorMaxDb;
+  slider.min = String(lowest);
+  slider.max = String(highest);
+  slider.step = '1';
+  slider.value = String(config.floorMaxDb);
+  ceilingDb.textContent = ceilingText(config.floorMaxDb);
+  slider.addEventListener('input', retune);
   start.addEventListener('click', () => capture.start());
   window.addEventListener('resize', fit);
   // A plain key only: with a modifier it is the browser's own, a bookmark or

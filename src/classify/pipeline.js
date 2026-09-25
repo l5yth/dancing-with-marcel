@@ -102,6 +102,20 @@ export class Pipeline {
   }
 
   /**
+   * Take a new configuration while the audio runs, for the floor ceiling
+   * slider (SPEC S1, S2): the gate takes it at once, and so does the tempo
+   * follower, hop by hop. The analyzer keeps the tempo range it was built
+   * with, which the slider does not touch.
+   *
+   * @param {Readonly<Config>} config The configuration from now on.
+   * @returns {void}
+   */
+  retune(config) {
+    this.config = config;
+    this.gate.retune(config);
+  }
+
+  /**
    * Feed samples and collect the decisions they complete. Any chunk size gives
    * the same decisions.
    *

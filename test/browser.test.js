@@ -410,4 +410,279 @@ describe('a real browser', { skip: BROWSER === null ? 'no Chromium on PATH' : fa
       assert.equal(part.ground, 'rgb(0, 0, 0)', `${name} is transparent over the figure`);
     }
   });
+
+  it('C24: the slider sits under the overlay, in its face, white on black', async () => {
+    const session = await page({ query: '?debug=1' });
+    await click(session, 'start');
+    // Measured with the overlay written, at its full height, which is when
+    // the slider's row could land on it.
+    const written = await until(
+      async () =>
+        /^punks\s/m.test(
+          String(await session.evaluate(`document.getElementById('overlay').textContent`)),
+        ),
+      15000,
+    );
+    assert.ok(written, 'the overlay was never written');
+    const look = await session.evaluate(
+      `(() => {
+         const box = (id) => {
+           const r = document.getElementById(id).getBoundingClientRect();
+           return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+         };
+         const style = (id) => getComputedStyle(document.getElementById(id));
+         const row = style('ceiling');
+         const overlay = style('overlay');
+         const slider = style('ceiling-slider');
+         return {
+           shown: row.display !== 'none',
+           row: { family: row.fontFamily, size: row.fontSize, ground: row.backgroundColor },
+           overlay: { family: overlay.fontFamily, size: overlay.fontSize },
+           slider: {
+             appearance: slider.appearance,
+             color: slider.color,
+             accent: slider.accentColor,
+             ground: slider.backgroundColor,
+           },
+           boxes: { row: box('ceiling'), overlay: box('overlay'), repo: box('repo') },
+           height: innerHeight,
+           width: innerWidth,
+         };
+       })()`,
+    );
+    assert.ok(look.shown, 'the slider is hidden under ?debug=1');
+    // One block of debug text: the same face at the same size, on black.
+    assert.equal(look.row.family, look.overlay.family, 'the slider row is in another font');
+    assert.equal(look.row.size, look.overlay.size, 'the slider row is at another size');
+    assert.equal(look.row.ground, 'rgb(0, 0, 0)', 'the slider row is transparent over the figure');
+    // Under the overlay's lines, in its corner, and clear of the link. The
+    // corner is the block's, 1rem in from the left and up from the bottom.
+    const { row, overlay, repo } = look.boxes;
+    assert.ok(Math.abs(overlay.left - 16) <= 2, `the block starts ${overlay.left} px in`);
+    assert.ok(Math.abs(look.height - 16 - row.bottom) <= 2, `the block ends at ${row.bottom}`);
+    assert.ok(
+      Math.abs(row.left - overlay.left) <= 2,
+      `row at ${row.left}, overlay at ${overlay.left}`,
+    );
+    // Stacked, the row starts where the overlay ends: no pixel of overlap,
+    // with a hundredth of one for the arithmetic of fractional layout.
+    assert.ok(
+      row.top >= overlay.bottom - 0.01,
+      `row at ${row.top}, overlay ends at ${overlay.bottom}`,
+    );
+    assert.ok(row.bottom <= look.height, 'the row runs off the window');
+    // The link keeps the other corner, 1rem in from the right and up from the
+    // bottom: laid out in the page's flow it would sit beside the stage and
+    // squeeze it.
+    assert.ok(Math.abs(look.width - 16 - repo.right) <= 2, `the link ends at ${repo.right}`);
+    assert.ok(Math.abs(look.height - 16 - repo.bottom) <= 2, `the link sits at ${repo.bottom}`);
+    const apart = row.right <= repo.left || repo.right <= row.left;
+    assert.ok(
+      apart || row.bottom <= repo.top || repo.bottom <= row.top,
+      'the row lies on the link',
+    );
+    // The browser's own slider is blue on grey; this one is drawn by the page.
+    assert.equal(look.slider.appearance, 'none');
+    assert.equal(look.slider.color, 'rgb(255, 255, 255)');
+    assert.equal(look.slider.accent, 'rgb(255, 255, 255)');
+    // The track and the thumb live in the slider's own shadow tree, which a
+    // stylesheet reaches only through the vendor's pseudo-elements and a
+    // script not at all; the DevTools protocol reads what they computed to.
+    // Without the page's rules the track has no ground and the thumb is the
+    // browser's round one.
+    const { result: tree } = await session.send('DOM.getDocument', { depth: -1, pierce: true });
+    /**
+     * The first node, depth first through children and shadow trees, whose
+     * attributes hold a value.
+     *
+     * @param {any} node Where to start.
+     * @param {string} value An attribute value, such as an id.
+     * @returns {any} The node, or `undefined`.
+     */
+    const holding = (node, value) => {
+      if ((node.attributes ?? []).includes(value)) {
+        return node;
+      }
+      for (const next of [...(node.children ?? []), ...(node.shadowRoots ?? [])]) {
+        const found = holding(next, value);
+        if (found !== undefined) {
+          return found;
+        }
+      }
+      return undefined;
+    };
+    const input = holding(tree.root, 'ceiling-slider');
+    await session.send('CSS.enable');
+    /**
+     * What a part of the slider's shadow tree computed to.
+     *
+     * @param {string} id The part's id: `track` or `thumb`.
+     * @returns {Promise<Record<string, string>>} Its computed style, by property.
+     */
+    const drawn = async (id) => {
+      const part = holding(input.shadowRoots[0], id);
+      assert.ok(part !== undefined, `the slider has no ${id}`);
+      const answer = await session.send('CSS.getComputedStyleForNode', { nodeId: part.nodeId });
+      return Object.fromEntries(
+        answer.result.computedStyle.map((/** @type {any} */ entry) => [entry.name, entry.value]),
+      );
+    };
+    const track = await drawn('track');
+    assert.equal(track['background-color'], 'rgb(255, 255, 255)', 'the track is not drawn');
+    assert.equal(track.height, '2px');
+    const thumb = await drawn('thumb');
+    // Its own `appearance: none`, or Chromium paints its own thumb over the
+    // page's: round, and grey while it is dragged.
+    assert.equal(thumb.appearance, 'none', 'the browser paints the thumb');
+    assert.equal(thumb['background-color'], 'rgb(255, 255, 255)', 'the thumb is not drawn');
+    assert.equal(thumb.width, thumb.height, 'the thumb is not square');
+    for (const corner of ['top-left', 'top-right', 'bottom-left', 'bottom-right']) {
+      assert.equal(thumb[`border-${corner}-radius`], '0px', `the thumb is round at ${corner}`);
+    }
+    assert.equal(look.slider.ground, 'rgb(0, 0, 0)');
+    assert.deepEqual(session.logs, [], 'the console stayed quiet');
+    // And on a window 800 px wide, the narrowest the stage is fitted at, the
+    // row and the link still keep to their corners, apart.
+    const narrow = await page({ query: '?debug=1', window: { width: 800, height: 600 } });
+    await click(narrow, 'start');
+    const narrowWritten = await until(
+      async () =>
+        /^punks\s/m.test(
+          String(await narrow.evaluate(`document.getElementById('overlay').textContent`)),
+        ),
+      15000,
+    );
+    assert.ok(narrowWritten, 'the overlay was never written at 800 px');
+    // Measured with the overlay's longest line as long as it gets, the level
+    // line with the clipping warning, written in the same breath as the
+    // measurement so that no refresh comes between: the row is as wide as
+    // what it holds, whatever the overlay above it says.
+    const at800 = await narrow.evaluate(
+      `(() => {
+         const overlay = document.getElementById('overlay');
+         const lines = overlay.textContent.split('\\n');
+         lines[1] = 'level    -12.3 dB   floor -45.0 dB (max)   need -33.0 dB' +
+           '   CLIPPING 12%, turn the gain down';
+         overlay.textContent = lines.join('\\n');
+         const box = (id) => {
+           const r = document.getElementById(id).getBoundingClientRect();
+           return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+         };
+         return { row: box('ceiling'), repo: box('repo'), overlay: box('overlay') };
+       })()`,
+    );
+    assert.ok(
+      at800.overlay.right > at800.repo.left,
+      'the overlay never reached the link: the long line proves nothing',
+    );
+    const clear =
+      at800.row.right <= at800.repo.left ||
+      at800.repo.right <= at800.row.left ||
+      at800.row.bottom <= at800.repo.top ||
+      at800.repo.bottom <= at800.row.top;
+    assert.ok(
+      clear,
+      `at 800 px the row, to ${at800.row.right}, lies under the link, from ${at800.repo.left}`,
+    );
+    assert.deepEqual(narrow.logs, [], 'the console stayed quiet at 800 px');
+  });
+
+  it('C24: clicked on its word, the slider takes the arrow keys, and r, 2 and d reach the page', async () => {
+    const session = await page({ query: '?debug=1' });
+    // As the README says: a click on the word `ceiling` gives the slider the
+    // keys without moving it, where a click on its line would move it there.
+    await click(session, 'ceiling-db');
+    const focused = await session.evaluate(
+      `[document.activeElement && document.activeElement.id,
+        document.getElementById('ceiling-slider').value]`,
+    );
+    assert.deepEqual(focused, ['ceiling-slider', '-25'], 'a click on the word');
+    /**
+     * Press a key and let it go, as a hand does.
+     *
+     * @param {object} key What the DevTools protocol needs to know of the key.
+     * @returns {Promise<void>} Resolves once both halves are delivered.
+     */
+    const stroke = async (key) => {
+      for (const type of ['keyDown', 'keyUp']) {
+        await session.send('Input.dispatchKeyEvent', { type, ...key });
+      }
+    };
+    for (let count = 0; count < 20; count += 1) {
+      await stroke({ key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37 });
+    }
+    const moved = await session.evaluate(
+      `[document.getElementById('ceiling-slider').value,
+        document.getElementById('ceiling-db').textContent]`,
+    );
+    assert.deepEqual(moved, ['-45', 'ceiling -45.0 dB'], 'twenty steps from -25');
+    // Focused from the keyboard, it says so in white: the browser's own ring
+    // is a grey.
+    const ring = await session.evaluate(
+      `(() => {
+         const slider = document.getElementById('ceiling-slider');
+         const style = getComputedStyle(slider);
+         return [slider.matches(':focus-visible'), style.outlineStyle, style.outlineColor];
+       })()`,
+    );
+    assert.deepEqual(ring, [true, 'solid', 'rgb(255, 255, 255)'], 'the focus ring');
+    // A key goes to the focused slider first and reaches the page all the
+    // same: `r` forgets, and the label says so, then `d` hides the text.
+    await stroke({ key: 'r', code: 'KeyR', text: 'r', windowsVirtualKeyCode: 82 });
+    assert.equal(
+      await session.evaluate(`document.getElementById('label').textContent`),
+      'break',
+      'r did not reach the page past the slider',
+    );
+    // With capture running and the overlay written, a digit reaches the page
+    // past the focused slider too: the tier is forced, and the overlay says so.
+    await click(session, 'start');
+    const running = await until(
+      async () =>
+        /^state\s/.test(
+          String(await session.evaluate(`document.getElementById('overlay').textContent`)),
+        ),
+      15000,
+    );
+    assert.ok(running, 'the overlay was never written');
+    await click(session, 'ceiling-db');
+    assert.equal(
+      await session.evaluate(`document.activeElement && document.activeElement.id`),
+      'ceiling-slider',
+    );
+    await stroke({ key: '2', code: 'Digit2', text: '2', windowsVirtualKeyCode: 50 });
+    const forced = await until(
+      async () =>
+        /^state\s+\w+\s+tier 2 \(forced, (30|29|28) s left\)$/m.test(
+          String(await session.evaluate(`document.getElementById('overlay').textContent`)),
+        ),
+      3000,
+    );
+    assert.ok(forced, '2 did not reach the page past the slider');
+    for (const type of ['keyDown', 'keyUp']) {
+      await session.send('Input.dispatchKeyEvent', {
+        type,
+        key: 'd',
+        code: 'KeyD',
+        text: type === 'keyDown' ? 'd' : undefined,
+        windowsVirtualKeyCode: 68,
+      });
+    }
+    const shown = await session.evaluate(
+      `['overlay', 'repo', 'ceiling'].map((id) =>
+         getComputedStyle(document.getElementById(id)).display !== 'none')`,
+    );
+    assert.deepEqual(shown, [false, false, false], 'd did not hide the debug text');
+    assert.deepEqual(session.logs, [], 'the console stayed quiet');
+  });
+
+  it('C24: a ceiling between two steps puts the thumb on the nearer one, and the label says it', async () => {
+    const session = await page({ query: '?debug=1&floorMaxDb=-45.3' });
+    const opened = await session.evaluate(
+      `[document.getElementById('ceiling-slider').value,
+        document.getElementById('ceiling-db').textContent]`,
+    );
+    assert.deepEqual(opened, ['-45', 'ceiling -45.3 dB']);
+    assert.deepEqual(session.logs, [], 'the console stayed quiet');
+  });
 });

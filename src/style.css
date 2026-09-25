@@ -137,12 +137,12 @@ button:focus-visible {
   Debug text lies over the art, so it sets its own size and carries its own
   ground; inheriting a size from the body and nothing behind it leaves it
   competing with the figure for the same cells. The repository link is debug
-  information too, so it is set the same way rather than as a bare link.
+  information too, so it is set the same way rather than as a bare link, and
+  so is the floor ceiling slider's row (SPEC S3).
 */
 #overlay,
+#ceiling,
 #repo {
-  position: fixed;
-  bottom: 1rem;
   margin: 0;
   padding: 0.35rem 0.6rem;
   background: var(--bg);
@@ -151,12 +151,77 @@ button:focus-visible {
   line-height: 1.5;
 }
 
-#overlay {
+/* The overlay and the slider's row under it are one block in the corner,
+   stacked. The row is only as wide as what it holds: stretched to a long
+   overlay line, a clipping warning, it would reach under the link. */
+#debug {
+  position: fixed;
   left: 1rem;
+  bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 #repo {
+  position: fixed;
   right: 1rem;
+  bottom: 1rem;
+}
+
+/*
+  The browser draws a slider blue on grey, which is two colours the page does
+  not have (SPEC invariant 5), so its own appearance is off and the track and
+  the thumb are drawn here, white on black. The thumb is square, as a cell of
+  the stage is. Chromium and Firefox each name the parts their own way.
+*/
+/* It takes the row's font, so an em is the text's and not the larger one
+   a browser gives its controls, and it is short enough that the row keeps
+   clear of the link on a window 800 px wide. */
+#ceiling-slider {
+  appearance: none;
+  font: inherit;
+  width: 16em;
+  height: 1em;
+  margin: 0 0.6em 0 0;
+  vertical-align: middle;
+  background: var(--bg);
+  color: var(--fg);
+  accent-color: var(--fg);
+  cursor: pointer;
+}
+
+#ceiling-slider:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
+#ceiling-slider::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--fg);
+}
+
+#ceiling-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 0.8em;
+  height: 0.8em;
+  margin-top: calc(1px - 0.4em);
+  border: 0;
+  border-radius: 0;
+  background: var(--fg);
+}
+
+#ceiling-slider::-moz-range-track {
+  height: 2px;
+  background: var(--fg);
+}
+
+#ceiling-slider::-moz-range-thumb {
+  width: 0.8em;
+  height: 0.8em;
+  border: 0;
+  border-radius: 0;
+  background: var(--fg);
 }
 
 a {

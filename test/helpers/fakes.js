@@ -293,7 +293,17 @@ export function createFakeDocument({ missing = [], cell = { width: 60, height: 8
       return { width: cols * cell.width * size, height: lines * cell.height * size };
     },
   });
-  for (const id of ['start', 'label', 'panel', 'overlay', 'repo', 'stage']) {
+  for (const id of [
+    'start',
+    'label',
+    'panel',
+    'overlay',
+    'repo',
+    'stage',
+    'ceiling',
+    'ceiling-slider',
+    'ceiling-db',
+  ]) {
     if (!missing.includes(id)) {
       elements[id] = make(id);
     }

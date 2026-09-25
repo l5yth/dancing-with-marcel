@@ -56,18 +56,28 @@ keeps running and the URL settings are kept. They stop dancing for 15 to 18
 seconds, and a forced tier is kept. Use it after a song that was not
 recognised, not during one.
 
+The `ceiling` slider under the debug overlay sets how loud the learned room
+level may get, from -79 to 0 dB:
+
+- Drag its square, or click the word `ceiling` and use the arrow keys for
+  1 dB steps. A click on the line moves it to the clicked spot
+- Below `floor`, it pulls `floor` down to it at once
+- `r` keeps its value; a reload goes back to `?floorMaxDb=`, or -25
+
 ## A song is playing and they are not dancing
 
 1. Press `d` and read the `floor` line
-2. `floor` says `(max)`: mute the music for 2 seconds, or reload with
-   `?floorMaxDb=-45`
+2. `floor` says `(max)`: drag the `ceiling` slider down until `need` is under
+   `level`, or mute the music for 2 seconds. To keep a value after a reload,
+   add it to the URL: `?floorMaxDb=-45`
 3. `level` is under `need`: turn the music up
 4. `CLIPPING`: turn the input gain down
 5. None of those: press `1`, `2` or `3`, once every 30 seconds
 
 Add parameters to the URL:
 
-- `?debug=1` shows the live values and a link to the repository
+- `?debug=1` shows the live values, the `ceiling` slider and a link to the
+  repository
 - `?musicOverFloorDb=12&breakUnderFloorDb=8` sets how far over the room music
   must be to start, and to keep going
 - `?musicEnterMs=3000&breakHoldMs=2000` sets the switch delays
@@ -78,7 +88,8 @@ Add parameters to the URL:
 - `?levelWindowMs=400&timbreWindowMs=1500` set how far back level and timbre
   are read
 - `?floorRiseDbPerSec=0.5` sets how fast the room level is relearned
-- `?floorMaxDb=-25` sets how loud the learned room level may get
+- `?floorMaxDb=-25` sets how loud the learned room level may get; the
+  `ceiling` slider changes it while the page runs
 - `?floorWindowMs=180000&floorPercentile=0.2` set how far back the room level is read, and how quiet the floor sits in it
 - `?bpmMin=95&bpmMax=190` sets the tempo range
 - `?tempoMinConfidence=0.15` sets how sure a tempo must be to be shown

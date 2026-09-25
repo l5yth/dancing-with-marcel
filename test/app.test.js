@@ -22,73 +22,9 @@ import { boot } from '../src/app.js';
 import { BREAK_LOOPS, dancesOf, STAGE } from '../src/classify/show.js';
 import { DEFAULTS } from '../src/config.js';
 import { LOOP_ENERGY } from '../src/sprites/asciipunk.js';
-import {
-  createAudioStack,
-  createFakeDocument,
-  createFakeTimers,
-  createFakeWindow,
-  namedError,
-  pictureOf,
-} from './helpers/fakes.js';
+import { click, press, push, RATE, setup, WARM_S } from './helpers/app.js';
+import { namedError, pictureOf } from './helpers/fakes.js';
 import { drums, scaleToDb, silence } from './helpers/synth.js';
-
-/**
- * Build the app on fakes.
- *
- * @param {object} [options] Options.
- * @param {string} [options.search] Query string.
- * @param {string[]} [options.missing] Element ids to leave out of the page.
- * @returns {any} The stack, the page, and the environment.
- */
-function setup({ search = '', missing = [], random = () => 0 } = {}) {
-  const stack = createAudioStack();
-  const document = createFakeDocument({ missing });
-  const window = createFakeWindow();
-  const timers = createFakeTimers();
-  const env = {
-    document,
-    location: { search },
-    timers,
-    navigator: { mediaDevices: stack.mediaDevices },
-    AudioContext: stack.AudioContext,
-    AudioWorkletNode: stack.AudioWorkletNode,
-    window,
-    random,
-  };
-  return { stack, document, window, timers, env };
-}
-
-/**
- * Click start and wait for the capture to settle.
- *
- * @param {any} document The fake page.
- * @returns {Promise<void>} Resolves when the click handler is done.
- */
-async function click(document) {
-  await document.elements.start.listeners.click();
-}
-
-/** Sample rate of the fake audio context. */
-const RATE = 48000;
-
-/**
- * Seconds of drums after which he is dancing, from a cold start: the gate
- * defaults to break and takes its time to be sure (SPEC D7).
- */
-const WARM_S = 22;
-
-/**
- * Post audio to the page in 512-sample frames, like the worklet would.
- *
- * @param {any} stack The fake audio stack.
- * @param {Float32Array} audio The samples.
- */
-function push(stack, audio) {
-  const { port } = stack.log.nodes[0];
-  for (let offset = 0; offset + 512 <= audio.length; offset += 512) {
-    port.onmessage({ data: audio.slice(offset, offset + 512) });
-  }
-}
 
 /**
  * Count the ticks a show is given from here on.
@@ -104,23 +40,6 @@ function countTicks(show) {
     tick(ms);
   };
   return counter;
-}
-
-/**
- * A key going down, as the app reads one.
- *
- * @param {Partial<KeyPress>} fields What to override; the key is `d` unless said.
- * @returns {KeyPress} The key press.
- */
-function press(fields) {
-  return {
-    key: 'd',
-    repeat: false,
-    ctrlKey: false,
-    metaKey: false,
-    altKey: false,
-    ...fields,
-  };
 }
 
 /**

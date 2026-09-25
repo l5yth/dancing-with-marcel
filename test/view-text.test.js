@@ -17,7 +17,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { DEFAULTS } from '../src/config.js';
-import { overlayText, statusText } from '../src/view/text.js';
+import { ceilingText, overlayText, statusText } from '../src/view/text.js';
 
 describe('view text', () => {
   it('unit: every capture status that has something to say has a message', () => {
@@ -195,5 +195,15 @@ describe('view text', () => {
     assert.match(lines[3], /^pulse\s+0\.000/);
     assert.match(lines[4], /^tempo\s+none bpm at 0\.00/);
     assert.equal(lines[6], 'dance    140.0 bpm (default)');
+  });
+
+  it("C24: the label beside the slider reads the ceiling in the overlay's own format", () => {
+    // One decimal, as the floor of the level line has, so the two read
+    // against each other: `floor -45.0 dB (max)` under `ceiling -45.0 dB`.
+    assert.equal(ceilingText(-45), 'ceiling -45.0 dB');
+    assert.equal(ceilingText(-25), 'ceiling -25.0 dB');
+    assert.equal(ceilingText(-79), 'ceiling -79.0 dB');
+    assert.equal(ceilingText(0), 'ceiling 0.0 dB');
+    assert.equal(ceilingText(-45.5), 'ceiling -45.5 dB');
   });
 });

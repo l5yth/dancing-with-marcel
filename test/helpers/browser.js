@@ -152,8 +152,19 @@ export async function openPage({
       });
     });
     const debugPort = new URL(wsUrl).port;
-    const targets = await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json();
-    const page = targets.find((/** @type {{type: string}} */ target) => target.type === 'page');
+    // The browser says where it listens before it has opened the page it was
+    // given, and under load the list can come back without it: ask again
+    // until the page is there.
+    /** @type {{webSocketDebuggerUrl: string} | undefined} */
+    let page;
+    const opened = await until(async () => {
+      const targets = await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json();
+      page = targets.find((/** @type {{type: string}} */ target) => target.type === 'page');
+      return page !== undefined;
+    }, START_TIMEOUT_MS);
+    if (!opened || page === undefined) {
+      throw new Error(`${browser} opened no page`);
+    }
     const socket = new WebSocket(page.webSocketDebuggerUrl);
     session.socket = socket;
     await new Promise((resolve) => socket.addEventListener('open', resolve, { once: true }));

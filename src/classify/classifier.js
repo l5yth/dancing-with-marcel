@@ -55,7 +55,11 @@
  * invariant 4).
  */
 
-/** Level the floor starts at, in dBFS, before any audio has been heard. */
+/**
+ * Level the floor starts at, in dBFS, before any audio has been heard; or the
+ * ceiling, `floorMaxDb`, where that is lower, since the floor is never above
+ * it (SPEC S2).
+ */
 export const FLOOR_START_DB = -60;
 
 /**
@@ -71,7 +75,8 @@ export const FLOOR_MIN_DB = -80;
 
 /**
  * Loudest the floor may go by default, in dBFS: above this, nothing in the
- * room would count as music. `floorMaxDb` overrides it.
+ * room would count as music. `floorMaxDb` overrides it, from the URL or, while
+ * the page runs, from the floor ceiling slider.
  */
 export const FLOOR_MAX_DB = -25;
 
@@ -119,7 +124,7 @@ function clamp(value, low, high) {
 export class Classifier {
   /**
    * Create a classifier in the `break` state, with the floor at
-   * {@link FLOOR_START_DB}.
+   * {@link FLOOR_START_DB}, or at the ceiling where that is lower.
    *
    * @param {Readonly<Config>} config Thresholds and timings.
    */
@@ -155,10 +160,10 @@ export class Classifier {
      */
     this.goneMs = 0;
     /**
-     * Learned level of the room, in dBFS.
+     * Learned level of the room, in dBFS. Never above `floorMaxDb`.
      * @type {number}
      */
-    this.floorDb = FLOOR_START_DB;
+    this.floorDb = Math.min(FLOOR_START_DB, config.floorMaxDb);
     /**
      * The quietest moment of each second the room was listened to, in dBFS,
      * oldest first. The floor is a percentile of these.
@@ -312,6 +317,29 @@ export class Classifier {
     }
     this.adaptFloor(frameMs, dancing);
     return this.state;
+  }
+
+  /**
+   * Take a new configuration while the audio runs: the floor ceiling slider
+   * moves `floorMaxDb` (SPEC S1, S2), and the rest of the configuration comes
+   * through unchanged. The floor is never above the ceiling, so a ceiling
+   * moved under the floor takes the floor down with it here and now, whatever
+   * holds it. The hold keeps the floor from climbing into a song, and pulling
+   * it down can only make the song easier to hear; and on a page gone deaf the
+   * pulse evidence comes in streaks and holds the floor through each one,
+   * which is exactly when the gate could take the song if the level cleared
+   * the bar. A floor that waited to learn again would waste the streak.
+   *
+   * A higher ceiling moves nothing now: the floor may climb to it at
+   * `floorRiseDbPerSec`. The room of the window is kept either way, so the
+   * floor goes on learning under whatever ceiling is in force.
+   *
+   * @param {Readonly<Config>} config The configuration from now on.
+   * @returns {void}
+   */
+  retune(config) {
+    this.config = config;
+    this.floorDb = Math.min(this.floorDb, config.floorMaxDb);
   }
 
   /**

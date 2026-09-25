@@ -15,10 +15,11 @@
 */
 
 /**
- * @file Text shown on the page: capture status messages and the `?debug=1`
- * overlay. The debug word itself comes from `classify/label.js`, which the
- * offline eval prints too. The overlay is for tuning in the room: every
- * measurement sits next to the threshold it has to clear (SPEC D8).
+ * @file Text shown on the page: capture status messages, the `?debug=1`
+ * overlay, and the label of the floor ceiling slider under it. The debug word
+ * itself comes from `classify/label.js`, which the offline eval prints too.
+ * The overlay is for tuning in the room: every measurement sits next to the
+ * threshold it has to clear (SPEC D8).
  */
 
 /**
@@ -61,6 +62,18 @@ export function statusText(status, detail = '') {
  */
 function clipping(clipped) {
   return clipped === 0 ? '' : `   CLIPPING ${(100 * clipped).toFixed(0)}%, turn the gain down`;
+}
+
+/**
+ * The label beside the floor ceiling slider: the ceiling in force, in the
+ * overlay's own format, so it reads against the `floor` of the level line
+ * (SPEC S4).
+ *
+ * @param {number} floorMaxDb The ceiling, in dBFS.
+ * @returns {string} The label.
+ */
+export function ceilingText(floorMaxDb) {
+  return `ceiling ${floorMaxDb.toFixed(1)} dB`;
 }
 
 /**
